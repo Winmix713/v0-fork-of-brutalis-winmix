@@ -8,13 +8,14 @@ import { Badge } from "@/components/ui/badge"
 import { Search, Calendar, Users, Target, Loader2 } from "lucide-react"
 import { searchMatches, getTeamNames, searchMatchesByTeam } from "@/lib/matches"
 import { calculateStatistics } from "@/lib/football-statistics"
+import { safeFormatDate } from "@/lib/date-utils"
 import type { Match } from "@/lib/supabase"
 import type { StatisticsResult } from "@/lib/football-statistics"
 import MiniStatsGrid from "./mini-stats-grid"
 import GeneralStatisticsCard from "./general-statistics-card"
 import TeamAnalysisCard from "./team-analysis-card"
 import AIPredictionsCard from "./ai-predictions-card"
-import PredictionCard from "./prediction-card"
+import EnhancedPredictionCard from "./enhanced-prediction-card"
 import EnhancedLegendModeCard from "./enhanced-legend-mode-card"
 
 export default function MatchesList() {
@@ -214,11 +215,11 @@ export default function MatchesList() {
         </div>
       )}
 
-      {/* LEGEND MODE és Predikciók */}
+      {/* Enhanced Predikciók és LEGEND MODE */}
       {homeTeam.trim() && awayTeam.trim() && (
         <div className="space-y-6">
           <EnhancedLegendModeCard homeTeam={homeTeam.trim()} awayTeam={awayTeam.trim()} />
-          <PredictionCard homeTeam={homeTeam.trim()} awayTeam={awayTeam.trim()} />
+          <EnhancedPredictionCard homeTeam={homeTeam.trim()} awayTeam={awayTeam.trim()} statistics={statistics} />
         </div>
       )}
 
@@ -239,9 +240,7 @@ export default function MatchesList() {
                   className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-colors"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="text-sm text-slate-600">
-                      {new Date(match.match_time).toLocaleDateString("hu-HU")}
-                    </div>
+                    <div className="text-sm text-slate-600 min-w-[120px]">{safeFormatDate(match.match_time)}</div>
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{match.home_team}</span>
                       <span className="text-slate-600">vs</span>

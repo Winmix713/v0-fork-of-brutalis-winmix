@@ -1,0 +1,83 @@
+{
+  "info": {
+    "_postman_id": "YOUR_POSTMAN_COLLECTION_ID",
+    "name": "Enhanced Football Predictions API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Collection for testing the Enhanced Football Predictions API endpoints."
+  },
+  "item": [
+    {
+      "name": "Get Enhanced Prediction",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{BASE_URL}}/api/enhanced-prediction?home=Real Madrid&away=Barcelona&league=spain",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "enhanced-prediction"],
+          "query": [
+            {
+              "key": "home",
+              "value": "Real Madrid",
+              "description": "Home team name"
+            },
+            {
+              "key": "away",
+              "value": "Barcelona",
+              "description": "Away team name"
+            },
+            {
+              "key": "league",
+              "value": "spain",
+              "description": "League name (e.g., 'spain', 'england')"
+            },
+            {
+              "key": "date",
+              "value": "2025-08-10",
+              "description": "Optional match date (YYYY-MM-DD)",
+              "disabled": true
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Cache Status Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{BASE_URL}}/api/cache-status",
+          "host": ["{{BASE_URL}}"],
+          "path": ["api", "cache-status"]
+        }
+      },
+      "response": []
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [""]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:3000",
+      "type": "string",
+      "description": "Base URL for the API (e.g., http://localhost:3000 or your staging/production URL)"
+    }
+  ]
+}

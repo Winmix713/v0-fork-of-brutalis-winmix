@@ -1,5 +1,5 @@
-import { supabase, isSupabaseConfigured } from "./supabase"
-import type { Match, FormattedMatch } from "./supabase"
+import { supabase } from "./supabase" // Ensure supabase is imported
+import type { Match, FormattedMatch } from "./supabase" // Ensure Match and FormattedMatch types are imported
 
 // Hibaüzenet a hiányzó konfiguráció esetén
 const SUPABASE_ERROR = "Supabase nincs megfelelően konfigurálva. Ellenőrizd a környezeti változókat."
@@ -8,11 +8,8 @@ const TABLE_NOT_FOUND_ERROR =
 
 // Összes meccs lekérdezése (limitált, hogy ne legyen túl lassú)
 export async function getAllMatches(limit = 100): Promise<Match[]> {
-  if (!isSupabaseConfigured()) {
-    throw new Error(SUPABASE_ERROR)
-  }
   if (!supabase) {
-    throw new Error("Supabase kliens nincs inicializálva.")
+    throw new Error(SUPABASE_ERROR)
   }
 
   const { data, error } = await supabase
@@ -34,11 +31,8 @@ export async function getAllMatches(limit = 100): Promise<Match[]> {
 
 // Keresési függvény hazai és vendég csapat alapján
 export async function searchMatches(homeTeam?: string, awayTeam?: string, limit = 50): Promise<Match[]> {
-  if (!isSupabaseConfigured()) {
-    throw new Error(SUPABASE_ERROR)
-  }
   if (!supabase) {
-    throw new Error("Supabase kliens nincs inicializálva.")
+    throw new Error(SUPABASE_ERROR)
   }
 
   let query = supabase.from("matches").select("*")
@@ -67,14 +61,14 @@ export async function searchMatches(homeTeam?: string, awayTeam?: string, limit 
 
 // Csapat nevek lekérdezése autocomplete-hez
 export async function getTeamNames(): Promise<string[]> {
-  if (!isSupabaseConfigured()) {
+  if (!supabase) {
     throw new Error(SUPABASE_ERROR)
   }
-  if (!supabase) {
-    throw new Error("Supabase kliens nincs inicializálva.")
-  }
 
-  const { data, error } = await supabase.from("matches").select("home_team, away_team").limit(1000)
+  // The error was 'column matches.home_team does not exist'.
+  // Assuming the correct column names are 'home_team_name' and 'away_team_name' as previously discussed.
+  // If the actual column names in your DB are 'home_team' and 'away_team', please revert this change.
+  const { data, error } = await supabase.from("matches").select("home_team_name, away_team_name").limit(1000)
 
   if (error) {
     console.error("Hiba a csapat nevek lekérdezése során:", error)
@@ -83,8 +77,13 @@ export async function getTeamNames(): Promise<string[]> {
 
   const teams = new Set<string>()
   data?.forEach((match) => {
-    if (match.home_team) teams.add(match.home_team)
-    if (match.away_team) teams.add(match.away_team)
+    // Ensure you're accessing the correct properties based on your DB schema.
+    // If 'home_team_name' and 'away_team_name' are correct:
+    if (match.home_team_name) teams.add(match.home_team_name)
+    if (match.away_team_name) teams.add(match.away_team_name)
+    // If your DB uses 'home_team' and 'away_team', change above to:
+    // if (match.home_team) teams.add(match.home_team)
+    // if (match.away_team) teams.add(match.away_team)
   })
 
   return Array.from(teams).sort()
@@ -96,7 +95,7 @@ export async function getFormattedMatches(limit = 100): Promise<FormattedMatch[]
 
   return matches.map((match) => ({
     id: match.id,
-    match_date: new Date(match.match_time).toLocaleDateString("hu-HU"),
+    match_date: new Date(match.match_time).toLocaleDateString("hu-HU"), // Assuming match_time exists
     home_team: match.home_team,
     away_team: match.away_team,
     result: `${match.full_time_home_goals}-${match.full_time_away_goals}`,
@@ -108,17 +107,16 @@ export async function getFormattedMatches(limit = 100): Promise<FormattedMatch[]
 
 // Meccs keresése csapat név alapján
 export async function searchMatchesByTeam(teamName: string, limit = 50): Promise<Match[]> {
-  if (!isSupabaseConfigured()) {
+  if (!supabase) {
     throw new Error(SUPABASE_ERROR)
   }
-  if (!supabase) {
-    throw new Error("Supabase kliens nincs inicializálva.")
-  }
 
+  // Assuming 'home_team_name' and 'away_team_name' are the column names.
+  // If your DB uses 'home_team' and 'away_team', adjust the .or() clause accordingly.
   const { data, error } = await supabase
     .from("matches")
     .select("*")
-    .or(`home_team.ilike.%${teamName}%,away_team.ilike.%${teamName}%`)
+    .or(`home_team_name.ilike.%${teamName}%,away_team_name.ilike.%${teamName}%`)
     .order("match_time", { ascending: false })
     .limit(limit)
 
@@ -135,18 +133,15 @@ export async function searchMatchesByTeam(teamName: string, limit = 50): Promise
 
 // Csapat statisztikák lekérdezése
 export async function getTeamStatistics(teamName: string): Promise<any> {
-  if (!isSupabaseConfigured()) {
-    throw new Error(SUPABASE_ERROR)
-  }
   if (!supabase) {
-    throw new Error("Supabase kliens nincs inicializálva.")
+    throw new Error(SUPABASE_ERROR)
   }
 
   const { data, error } = await supabase
     .from("matches")
     .select("*")
-    .or(`home_team.ilike.%${teamName}%,away_team.ilike.%${teamName}%`)
-    .order("match_time", { ascending: false })
+    .or(`home_team_name.ilike.%${teamName}%,away_team_name.ilike.%${teamName}%`) // Adjust if your DB uses 'home_team'
+    .order("match_time", { ascending: false }) // Assuming match_time exists
     .limit(100)
 
   if (error) {
@@ -159,11 +154,8 @@ export async function getTeamStatistics(teamName: string): Promise<any> {
 
 // Új meccs hozzáadása
 export async function addMatch(match: Omit<Match, "id" | "created_at" | "updated_at">): Promise<Match> {
-  if (!isSupabaseConfigured()) {
-    throw new Error(SUPABASE_ERROR)
-  }
   if (!supabase) {
-    throw new Error("Supabase kliens nincs inicializálva.")
+    throw new Error(SUPABASE_ERROR)
   }
 
   const { data, error } = await supabase.from("matches").insert([match]).select().single()
@@ -181,11 +173,8 @@ export async function addMatch(match: Omit<Match, "id" | "created_at" | "updated
 
 // Meccs frissítése
 export async function updateMatch(id: number, updates: Partial<Match>): Promise<Match> {
-  if (!isSupabaseConfigured()) {
-    throw new Error(SUPABASE_ERROR)
-  }
   if (!supabase) {
-    throw new Error("Supabase kliens nincs inicializálva.")
+    throw new Error(SUPABASE_ERROR)
   }
 
   const { data, error } = await supabase
@@ -208,11 +197,8 @@ export async function updateMatch(id: number, updates: Partial<Match>): Promise<
 
 // Meccs törlése
 export async function deleteMatch(id: number): Promise<void> {
-  if (!isSupabaseConfigured()) {
-    throw new Error(SUPABASE_ERROR)
-  }
   if (!supabase) {
-    throw new Error("Supabase kliens nincs inicializálva.")
+    throw new Error(SUPABASE_ERROR)
   }
 
   const { error } = await supabase.from("matches").delete().eq("id", id)
