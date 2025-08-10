@@ -6,6 +6,7 @@ interface PredictionRequest {
   homeTeam: string
   awayTeam: string
   matchDate?: string
+  league?: string // Added league parameter
 }
 
 interface FeatureData {
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
   const homeTeam = searchParams.get("home_team")
   const awayTeam = searchParams.get("away_team")
   const matchDate = searchParams.get("match_date") || new Date().toISOString().split("T")[0]
+  const league = searchParams.get("league") || "La Liga" // Default league
 
   if (!homeTeam || !awayTeam) {
     return NextResponse.json(
@@ -55,6 +57,7 @@ export async function GET(request: NextRequest) {
 
   try {
     // Check cache first
+    // Pass matchDate directly, league is handled within getEnhancedPrediction's cacheKey generation
     const cachedPrediction = await getEnhancedPrediction(homeTeam, awayTeam, matchDate)
 
     if (cachedPrediction) {
@@ -63,7 +66,7 @@ export async function GET(request: NextRequest) {
         meta: {
           ...cachedPrediction.prediction.meta,
           cache_hit: true,
-          generated_at: cachedPrediction.generated_at,
+          generated_at: cachedPrediction.predicted_at, // Use predicted_at from DB
         },
       })
     }
@@ -172,7 +175,7 @@ export async function GET(request: NextRequest) {
       homeTeam,
       awayTeam,
       matchDate,
-      response,
+      response, // Pass the full response object
       features,
       "enhanced_stat_v1.1",
       confidence,

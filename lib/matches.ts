@@ -65,8 +65,7 @@ export async function getTeamNames(): Promise<string[]> {
     throw new Error(SUPABASE_ERROR)
   }
 
-  // Reverted to 'home_team' and 'away_team' based on the latest error.
-  // If your DB schema uses different names, please adjust here.
+  // Javítva: home_team és away_team oszlopokat használunk
   const { data, error } = await supabase.from("matches").select("home_team, away_team").limit(1000)
 
   if (error) {
@@ -99,13 +98,13 @@ export async function getFormattedMatches(limit = 100): Promise<FormattedMatch[]
   }))
 }
 
-// Meccs keresése csapat név alapján
+// Meccs keresése csapat név alapján - JAVÍTVA
 export async function searchMatchesByTeam(teamName: string, limit = 50): Promise<Match[]> {
   if (!isSupabaseConfigured() || !supabase) {
     throw new Error(SUPABASE_ERROR)
   }
 
-  // Reverted to 'home_team' and 'away_team' based on the latest error.
+  // Javítva: home_team és away_team oszlopokat használunk
   const { data, error } = await supabase
     .from("matches")
     .select("*")
@@ -124,13 +123,13 @@ export async function searchMatchesByTeam(teamName: string, limit = 50): Promise
   return data || []
 }
 
-// Csapat statisztikák lekérdezése
+// Csapat statisztikák lekérdezése - JAVÍTVA
 export async function getTeamStatistics(teamName: string): Promise<any> {
   if (!isSupabaseConfigured() || !supabase) {
     throw new Error(SUPABASE_ERROR)
   }
 
-  // Reverted to 'home_team' and 'away_team' based on the latest error.
+  // Javítva: home_team és away_team oszlopokat használunk
   const { data, error } = await supabase
     .from("matches")
     .select("*")

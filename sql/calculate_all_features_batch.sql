@@ -1,129 +1,171 @@
--- calculate_all_features_batch.sql
--- Bind params: :league, :home_team, :away_team
-WITH
--- team matches recent (home OR away) for home team
-home_matches AS (
-  SELECT
-    m.*,
-    (CASE WHEN lower(m.home_team) = lower(:home_team) THEN 'home' ELSE 'away' END) AS perspective
-  FROM matches m
-  WHERE m.league = :league AND (lower(m.home_team) = lower(:home_team) OR lower(m.away_team) = lower(:home_team))
-  ORDER BY m.match_date DESC
-  LIMIT 100
-),
--- team matches recent for away team
-away_matches AS (
-  SELECT
-    m.*,
-    (CASE WHEN lower(m.home_team) = lower(:away_team) THEN 'home' ELSE 'away' END) AS perspective
-  FROM matches m
-  WHERE m.league = :league AND (lower(m.home_team) = lower(:away_team) OR lower(m.away_team) = lower(:away_team))
-  ORDER BY m.match_date DESC
-  LIMIT 100
-),
--- head-to-head
-h2h_matches AS (
-  SELECT m.*
-  FROM matches m
-  WHERE m.league = :league
-    AND (
-      (lower(m.home_team) = lower(:home_team) AND lower(m.away_team) = lower(:away_team))
-      OR (lower(m.home_team) = lower(:away_team) AND lower(m.away_team) = lower(:home_team))
-    )
-  ORDER BY m.match_date DESC
-  LIMIT 50
-),
+-- sql/calculate_all_features_batch.sql
+-- Enterprise-level SQL: Batch Feature Calculation for Football Matches.
+-- This script defines functions to calculate various statistical features for matches,
+-- which are crucial for machine learning models. It supports both individual match
+-- feature calculation and batch processing.
 
--- Aggregates for home
-home_agg AS (
-  SELECT
-    COUNT(*) AS total_matches,
-    SUM(CASE WHEN ( (perspective='home' AND halftime_home < halftime_away AND fulltime_home > fulltime_away)
-                   OR (perspective='away' AND halftime_away < halftime_home AND fulltime_away > fulltime_home) ) THEN 1 ELSE 0 END) AS comeback_wins,
-    SUM(CASE WHEN ( (perspective='home' AND halftime_home > halftime_away AND fulltime_home < fulltime_away)
-                   OR (perspective='away' AND halftime_away > halftime_home AND fulltime_away < fulltime_home) ) THEN 1 ELSE 0 END) AS blown_leads,
-    SUM(CASE WHEN ( (perspective='home' AND fulltime_home > fulltime_away)
-                   OR (perspective='away' AND fulltime_away > fulltime_home) ) THEN 3
-             WHEN (fulltime_home = fulltime_away) THEN 1 ELSE 0 END) AS points,
-    AVG( (CASE WHEN perspective='home' THEN fulltime_home ELSE fulltime_away END) ) AS avg_scored,
-    AVG( (CASE WHEN perspective='home' THEN fulltime_away ELSE fulltime_home END) ) AS avg_conceded,
-    SUM(CASE WHEN (fulltime_home > 0 AND fulltime_away > 0) THEN 1 ELSE 0 END) AS btts_count,
-    SUM(CASE WHEN ( (fulltime_home + fulltime_away) > 2 ) THEN 1 ELSE 0 END) AS over25_count,
-    SUM(CASE WHEN ( (perspective='home' AND halftime_home > halftime_away) OR (perspective='away' AND halftime_away > halftime_home) ) THEN 1 ELSE 0 END) AS ht_lead_count
-  FROM home_matches
-),
+BEGIN; -- Start a transaction
 
--- Aggregates for away
-away_agg AS (
-  SELECT
-    COUNT(*) AS total_matches,
-    SUM(CASE WHEN ( (perspective='home' AND halftime_home < halftime_away AND fulltime_home > fulltime_away)
-                   OR (perspective='away' AND halftime_away < halftime_home AND fulltime_away > fulltime_home) ) THEN 1 ELSE 0 END) AS comeback_wins,
-    SUM(CASE WHEN ( (perspective='home' AND halftime_home > halftime_away AND fulltime_home < fulltime_away)
-                   OR (perspective='away' AND halftime_away > halftime_home AND fulltime_away < fulltime_home) ) THEN 1 ELSE 0 END) AS blown_leads,
-    SUM(CASE WHEN ( (perspective='home' AND fulltime_home > fulltime_away)
-                   OR (perspective='away' AND fulltime_away > fulltime_home) ) THEN 3
-             WHEN (fulltime_home = fulltime_away) THEN 1 ELSE 0 END) AS points,
-    AVG( (CASE WHEN perspective='home' THEN fulltime_home ELSE fulltime_away END) ) AS avg_scored,
-    AVG( (CASE WHEN perspective='home' THEN fulltime_away ELSE fulltime_home END) ) AS avg_conceded,
-    SUM(CASE WHEN (fulltime_home > 0 AND fulltime_away > 0) THEN 1 ELSE 0 END) AS btts_count,
-    SUM(CASE WHEN ( (fulltime_home + fulltime_away) > 2 ) THEN 1 ELSE 0 END) AS over25_count,
-    SUM(CASE WHEN ( (perspective='home' AND halftime_home > halftime_away) OR (perspective='away' AND halftime_away > halftime_home) ) THEN 1 ELSE 0 END) AS ht_lead_count
-  FROM away_matches
-),
-
--- H2H aggregates
-h2h_agg AS (
-  SELECT
-    COUNT(*) AS total_matches,
-    SUM(CASE WHEN fulltime_home > fulltime_away THEN 1 ELSE 0 END) FILTER (WHERE lower(home_team)=lower(:home_team)) AS home_wins_when_home,
-    SUM(CASE WHEN fulltime_away > fulltime_home THEN 1 ELSE 0 END) FILTER (WHERE lower(away_team)=lower(:away_team)) AS away_wins_when_away,
-    SUM(fulltime_home + fulltime_away) AS total_goals
-  FROM h2h_matches
+-- 1. Function to calculate features for a single match
+--    This function takes a match ID and returns a JSONB object of calculated features.
+CREATE OR REPLACE FUNCTION public.calculate_features_for_match(
+    p_match_id INTEGER,
+    p_lookback_days INTEGER DEFAULT 30,
+    p_h2h_matches_limit INTEGER DEFAULT 10
 )
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_home_team TEXT;
+    v_away_team TEXT;
+    v_league TEXT;
+    v_match_time TIMESTAMPTZ;
+    v_features JSONB := '{}';
+    v_team_form_home JSONB;
+    v_team_form_away JSONB;
+    v_h2h_stats JSONB;
+    v_comeback_stats_home JSONB;
+    v_comeback_stats_away JSONB;
+BEGIN
+    -- Retrieve match details
+    SELECT home_team, away_team, league, match_time
+    INTO v_home_team, v_away_team, v_league, v_match_time
+    FROM public.matches
+    WHERE id = p_match_id;
 
--- Final JSON output
-SELECT json_build_object(
-  'home', json_build_object(
-    'total_matches', home_agg.total_matches,
-    'comeback_wins', home_agg.comeback_wins,
-    'comeback_ratio', CASE WHEN home_agg.total_matches>0 THEN round((home_agg.comeback_wins::numeric/home_agg.total_matches)::numeric,3) ELSE NULL END,
-    'blown_leads', home_agg.blown_leads,
-    'blown_leads_ratio', CASE WHEN home_agg.total_matches>0 THEN round((home_agg.blown_leads::numeric/home_agg.total_matches)::numeric,3) ELSE NULL END,
-    'points', home_agg.points,
-    'form_index', CASE WHEN home_agg.total_matches>0 THEN round((home_agg.points::numeric/(home_agg.total_matches*3))::numeric,3) ELSE NULL END,
-    'avg_scored', round(home_agg.avg_scored::numeric, 2),
-    'avg_conceded', round(home_agg.avg_conceded::numeric, 2),
-    'btts_rate', CASE WHEN home_agg.total_matches>0 THEN round((home_agg.btts_count::numeric/home_agg.total_matches)::numeric,3) ELSE NULL END,
-    'over25_rate', CASE WHEN home_agg.total_matches>0 THEN round((home_agg.over25_count::numeric/home_agg.total_matches)::numeric,3) ELSE NULL END,
-    'ht_lead_ratio', CASE WHEN home_agg.total_matches>0 THEN round((home_agg.ht_lead_count::numeric/home_agg.total_matches)::numeric,3) ELSE NULL END
-  ),
-  'away', json_build_object(
-    'total_matches', away_agg.total_matches,
-    'comeback_wins', away_agg.comeback_wins,
-    'comeback_ratio', CASE WHEN away_agg.total_matches>0 THEN round((away_agg.comeback_wins::numeric/away_agg.total_matches)::numeric,3) ELSE NULL END,
-    'blown_leads', away_agg.blown_leads,
-    'blown_leads_ratio', CASE WHEN away_agg.total_matches>0 THEN round((away_agg.blown_leads::numeric/away_agg.total_matches)::numeric,3) ELSE NULL END,
-    'points', away_agg.points,
-    'form_index', CASE WHEN away_agg.total_matches>0 THEN round((away_agg.points::numeric/(away_agg.total_matches*3))::numeric,3) ELSE NULL END,
-    'avg_scored', round(away_agg.avg_scored::numeric, 2),
-    'avg_conceded', round(away_agg.avg_conceded::numeric, 2),
-    'btts_rate', CASE WHEN away_agg.total_matches>0 THEN round((away_agg.btts_count::numeric/away_agg.total_matches)::numeric,3) ELSE NULL END,
-    'over25_rate', CASE WHEN away_agg.total_matches>0 THEN round((away_agg.over25_count::numeric/away_agg.total_matches)::numeric,3) ELSE NULL END,
-    'ht_lead_ratio', CASE WHEN away_agg.total_matches>0 THEN round((away_agg.ht_lead_count::numeric/away_agg.total_matches)::numeric,3) ELSE NULL END
-  ),
-  'h2h', json_build_object(
-    'total_matches', h2h_agg.total_matches,
-    'home_wins_when_home', h2h_agg.home_wins_when_home,
-    'away_wins_when_away', h2h_agg.away_wins_when_away,
-    'total_goals_avg', CASE WHEN h2h_agg.total_matches>0 THEN round((h2h_agg.total_goals::numeric/h2h_agg.total_matches)::numeric,2) ELSE NULL END
-  ),
-  'meta', json_build_object(
-    'generated_at', now(),
-    'model_version', 'batch_sql_v1',
-    'league', :league,
-    'home_team', :home_team,
-    'away_team', :away_team
-  )
-) AS features_json
-FROM home_agg, away_agg, h2h_agg;
+    IF v_home_team IS NULL THEN
+        RAISE EXCEPTION 'Match with ID % not found.', p_match_id;
+    END IF;
+
+    -- Get home team form stats
+    SELECT to_jsonb(t) INTO v_team_form_home
+    FROM public.get_team_form_stats(v_home_team, v_league, v_match_time, p_lookback_days) AS t;
+    v_features := jsonb_set(v_features, '{home_team_form}', v_team_form_home, true);
+
+    -- Get away team form stats
+    SELECT to_jsonb(t) INTO v_team_form_away
+    FROM public.get_team_form_stats(v_away_team, v_league, v_match_time, p_lookback_days) AS t;
+    v_features := jsonb_set(v_features, '{away_team_form}', v_team_form_away, true);
+
+    -- Get head-to-head stats
+    SELECT to_jsonb(t) INTO v_h2h_stats
+    FROM public.get_h2h_stats(v_home_team, v_away_team, v_match_time, p_h2h_matches_limit) AS t;
+    v_features := jsonb_set(v_features, '{h2h_stats}', v_h2h_stats, true);
+
+    -- Get comeback stats for home team
+    SELECT to_jsonb(t) INTO v_comeback_stats_home
+    FROM public.get_comeback_stats(v_home_team, p_lookback_days) AS t;
+    v_features := jsonb_set(v_features, '{home_comeback_stats}', v_comeback_stats_home, true);
+
+    -- Get comeback stats for away team
+    SELECT to_jsonb(t) INTO v_comeback_stats_away
+    FROM public.get_comeback_stats(v_away_team, p_lookback_days) AS t;
+    v_features := jsonb_set(v_features, '{away_comeback_stats}', v_comeback_stats_away, true);
+
+    RETURN v_features;
+END;
+$$;
+
+-- 2. Function to calculate features for a batch of matches
+--    This function iterates through recent matches and calculates/updates their features.
+CREATE OR REPLACE FUNCTION public.calculate_all_features_batch(
+    p_days_lookback INTEGER DEFAULT 7, -- How many days back to look for matches to process
+    p_form_lookback_days INTEGER DEFAULT 30,
+    p_h2h_matches_limit INTEGER DEFAULT 10
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER -- Use SECURITY DEFINER to allow function to update tables it might not have direct user permissions for
+AS $$
+DECLARE
+    r RECORD;
+    v_features JSONB;
+    v_processed_count INTEGER := 0;
+BEGIN
+    -- Log start of batch process
+    INSERT INTO public.system_logs (event_type, message, created_at)
+    VALUES ('feature_calculation_batch', 'Starting batch feature calculation for recent matches.', NOW());
+
+    FOR r IN
+        SELECT id, home_team, away_team, match_time, league
+        FROM public.matches
+        WHERE match_time >= (NOW() - INTERVAL '1 day' * p_days_lookback)
+        ORDER BY match_time DESC
+    LOOP
+        BEGIN
+            -- Calculate features for the current match
+            v_features := public.calculate_features_for_match(
+                r.id,
+                p_form_lookback_days,
+                p_h2h_matches_limit
+            );
+
+            -- Update the predictions table with the new features
+            -- Assuming 'predictions' table has a 'features_used' JSONB column
+            -- This will update existing predictions or insert new ones if needed.
+            -- For a more robust solution, consider a dedicated 'match_features' table.
+            UPDATE public.predictions
+            SET
+                features_used = v_features,
+                updated_at = NOW()
+            WHERE
+                match_id = r.id;
+
+            IF NOT FOUND THEN
+                -- If no prediction exists for this match, insert a new one with features
+                -- This is a simplified insert; actual prediction logic would be more complex.
+                INSERT INTO public.predictions (
+                    match_id, home_team, away_team, match_date, league, prediction_type,
+                    home_win_probability, draw_probability, away_win_probability,
+                    confidence_score, model_version, features_used, cache_key, predicted_at
+                ) VALUES (
+                    r.id, r.home_team, r.away_team, r.match_time::DATE, r.league, 'raw_features',
+                    0.33, 0.33, 0.34, -- Placeholder probabilities
+                    0.5, 'feature_extractor_v1', v_features,
+                    format('%s:%s:%s:%s', r.league, r.home_team, r.away_team, r.match_time::DATE),
+                    NOW()
+                ) ON CONFLICT (cache_key) DO UPDATE SET
+                    features_used = EXCLUDED.features_used,
+                    updated_at = NOW();
+            END IF;
+
+            v_processed_count := v_processed_count + 1;
+
+        EXCEPTION
+            WHEN OTHERS THEN
+                -- Log any errors encountered for individual matches
+                INSERT INTO public.system_logs (event_type, message, created_at, details)
+                VALUES (
+                    'feature_calculation_error',
+                    format('Error processing match ID %s: %s', r.id, SQLERRM),
+                    NOW(),
+                    jsonb_build_object('match_id', r.id, 'error_sqlstate', SQLSTATE)
+                );
+        END;
+    END LOOP;
+
+    -- Log end of batch process
+    INSERT INTO public.system_logs (event_type, message, created_at, details)
+    VALUES (
+        'feature_calculation_batch',
+        format('Completed batch feature calculation. Processed %s matches.', v_processed_count),
+        NOW(),
+        jsonb_build_object('processed_count', v_processed_count)
+    );
+END;
+$$;
+
+-- Grant execution permissions
+GRANT EXECUTE ON FUNCTION public.calculate_features_for_match(INTEGER, INTEGER, INTEGER) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.calculate_all_features_batch(INTEGER, INTEGER, INTEGER) TO authenticated;
+-- Grant usage on sequences if SERIAL is used for IDs and functions interact with them
+GRANT USAGE ON SEQUENCE public.predictions_id_seq TO authenticated;
+
+COMMIT; -- End the transaction
+
+-- Verification (for development/testing)
+SELECT 'Batch feature calculation functions created successfully!' AS status;
+-- Example usage:
+-- SELECT public.calculate_features_for_match(1); -- Replace 1 with an actual match ID
+-- SELECT public.calculate_all_features_batch(7); -- Process matches from the last 7 days

@@ -1,224 +1,139 @@
--- LEGEND MODE: Comeback Frequency Breakdown
--- Enhanced batch SQL with detailed comeback patterns
-WITH
--- Enhanced home team analysis with comeback patterns
-home_matches_detailed AS (
-  SELECT
-    m.*,
-    (CASE WHEN lower(m.home_team) = lower(:home_team) THEN 'home' ELSE 'away' END) AS perspective,
-    -- Comeback scenarios
-    CASE 
-      WHEN (lower(m.home_team) = lower(:home_team) AND halftime_home < halftime_away AND fulltime_home > fulltime_away)
-        OR (lower(m.away_team) = lower(:home_team) AND halftime_away < halftime_home AND fulltime_away > fulltime_home)
-      THEN 'comeback_win'
-      WHEN (lower(m.home_team) = lower(:home_team) AND halftime_home < halftime_away AND fulltime_home = fulltime_away)
-        OR (lower(m.away_team) = lower(:home_team) AND halftime_away < halftime_home AND fulltime_away = fulltime_home)
-      THEN 'comeback_draw'
-      WHEN (lower(m.home_team) = lower(:home_team) AND halftime_home > halftime_away AND fulltime_home < fulltime_away)
-        OR (lower(m.away_team) = lower(:home_team) AND halftime_away > halftime_home AND fulltime_away < fulltime_home)
-      THEN 'blown_lead_loss'
-      WHEN (lower(m.home_team) = lower(:home_team) AND halftime_home > halftime_away AND fulltime_home = fulltime_away)
-        OR (lower(m.away_team) = lower(:home_team) AND halftime_away > halftime_home AND fulltime_away = fulltime_home)
-      THEN 'blown_lead_draw'
-      ELSE 'normal'
-    END AS comeback_pattern,
-    -- Goal difference analysis
-    ABS((CASE WHEN lower(m.home_team) = lower(:home_team) THEN halftime_home - halftime_away ELSE halftime_away - halftime_home END)) AS ht_goal_diff,
-    ABS((CASE WHEN lower(m.home_team) = lower(:home_team) THEN fulltime_home - fulltime_away ELSE fulltime_away - fulltime_home END)) AS ft_goal_diff
-  FROM matches m
-  WHERE m.league = :league AND (lower(m.home_team) = lower(:home_team) OR lower(m.away_team) = lower(:home_team))
-  ORDER BY m.match_date DESC
-  LIMIT 50
-),
+-- sql/legend_mode_comeback_breakdown.sql
+-- Enterprise-level SQL: Legend Mode Comeback Breakdown Analysis.
+-- This script provides a detailed analysis of a team's comeback and blown lead statistics,
+-- crucial for the "Legend Mode" feature. It defines a function that returns a JSONB
+-- object containing various comeback-related metrics.
 
--- Enhanced away team analysis
-away_matches_detailed AS (
-  SELECT
-    m.*,
-    (CASE WHEN lower(m.home_team) = lower(:away_team) THEN 'home' ELSE 'away' END) AS perspective,
-    CASE 
-      WHEN (lower(m.home_team) = lower(:away_team) AND halftime_home < halftime_away AND fulltime_home > fulltime_away)
-        OR (lower(m.away_team) = lower(:away_team) AND halftime_away < halftime_home AND fulltime_away > fulltime_home)
-      THEN 'comeback_win'
-      WHEN (lower(m.home_team) = lower(:away_team) AND halftime_home < halftime_away AND fulltime_home = fulltime_away)
-        OR (lower(m.away_team) = lower(:away_team) AND halftime_away < halftime_home AND fulltime_away = fulltime_home)
-      THEN 'comeback_draw'
-      WHEN (lower(m.home_team) = lower(:away_team) AND halftime_home > halftime_away AND fulltime_home < fulltime_away)
-        OR (lower(m.away_team) = lower(:away_team) AND halftime_away > halftime_home AND fulltime_away < fulltime_home)
-      THEN 'blown_lead_loss'
-      WHEN (lower(m.home_team) = lower(:away_team) AND halftime_home > halftime_away AND fulltime_home = fulltime_away)
-        OR (lower(m.away_team) = lower(:away_team) AND halftime_away > halftime_home AND fulltime_away = fulltime_home)
-      THEN 'blown_lead_draw'
-      ELSE 'normal'
-    END AS comeback_pattern,
-    ABS((CASE WHEN lower(m.home_team) = lower(:away_team) THEN halftime_home - halftime_away ELSE halftime_away - halftime_home END)) AS ht_goal_diff,
-    ABS((CASE WHEN lower(m.home_team) = lower(:away_team) THEN fulltime_home - fulltime_away ELSE fulltime_away - fulltime_home END)) AS ft_goal_diff
-  FROM matches m
-  WHERE m.league = :league AND (lower(m.home_team) = lower(:away_team) OR lower(m.away_team) = lower(:away_team))
-  ORDER BY m.match_date DESC
-  LIMIT 50
-),
+BEGIN; -- Start a transaction
 
--- LEGEND MODE: Comeback frequency breakdown
-home_comeback_breakdown AS (
-  SELECT
-    COUNT(*) AS total_matches,
-    -- Comeback patterns
-    COUNT(*) FILTER (WHERE comeback_pattern = 'comeback_win') AS comeback_wins,
-    COUNT(*) FILTER (WHERE comeback_pattern = 'comeback_draw') AS comeback_draws,
-    COUNT(*) FILTER (WHERE comeback_pattern = 'blown_lead_loss') AS blown_lead_losses,
-    COUNT(*) FILTER (WHERE comeback_pattern = 'blown_lead_draw') AS blown_lead_draws,
-    COUNT(*) FILTER (WHERE comeback_pattern = 'normal') AS normal_matches,
-    
-    -- Comeback by goal difference
-    COUNT(*) FILTER (WHERE comeback_pattern IN ('comeback_win', 'comeback_draw') AND ht_goal_diff = 1) AS comeback_1goal,
-    COUNT(*) FILTER (WHERE comeback_pattern IN ('comeback_win', 'comeback_draw') AND ht_goal_diff = 2) AS comeback_2goal,
-    COUNT(*) FILTER (WHERE comeback_pattern IN ('comeback_win', 'comeback_draw') AND ht_goal_diff >= 3) AS comeback_3plus_goal,
-    
-    -- Time-based patterns (recent form)
-    COUNT(*) FILTER (WHERE comeback_pattern IN ('comeback_win', 'comeback_draw')) AS total_comebacks,
-    
-    -- Advanced metrics
-    AVG(CASE WHEN comeback_pattern = 'comeback_win' THEN ft_goal_diff ELSE NULL END) AS avg_comeback_margin,
-    MAX(CASE WHEN comeback_pattern IN ('comeback_win', 'comeback_draw') THEN ht_goal_diff ELSE 0 END) AS max_comeback_deficit
-  FROM home_matches_detailed
-),
-
-away_comeback_breakdown AS (
-  SELECT
-    COUNT(*) AS total_matches,
-    COUNT(*) FILTER (WHERE comeback_pattern = 'comeback_win') AS comeback_wins,
-    COUNT(*) FILTER (WHERE comeback_pattern = 'comeback_draw') AS comeback_draws,
-    COUNT(*) FILTER (WHERE comeback_pattern = 'blown_lead_loss') AS blown_lead_losses,
-    COUNT(*) FILTER (WHERE comeback_pattern = 'blown_lead_draw') AS blown_lead_draws,
-    COUNT(*) FILTER (WHERE comeback_pattern = 'normal') AS normal_matches,
-    
-    COUNT(*) FILTER (WHERE comeback_pattern IN ('comeback_win', 'comeback_draw') AND ht_goal_diff = 1) AS comeback_1goal,
-    COUNT(*) FILTER (WHERE comeback_pattern IN ('comeback_win', 'comeback_draw') AND ht_goal_diff = 2) AS comeback_2goal,
-    COUNT(*) FILTER (WHERE comeback_pattern IN ('comeback_win', 'comeback_draw') AND ht_goal_diff >= 3) AS comeback_3plus_goal,
-    
-    COUNT(*) FILTER (WHERE comeback_pattern IN ('comeback_win', 'comeback_draw')) AS total_comebacks,
-    
-    AVG(CASE WHEN comeback_pattern = 'comeback_win' THEN ft_goal_diff ELSE NULL END) AS avg_comeback_margin,
-    MAX(CASE WHEN comeback_pattern IN ('comeback_win', 'comeback_draw') THEN ht_goal_diff ELSE 0 END) AS max_comeback_deficit
-  FROM away_matches_detailed
-),
-
--- Enhanced H2H with comeback patterns
-h2h_comeback_analysis AS (
-  SELECT
-    COUNT(*) AS total_matches,
-    COUNT(*) FILTER (WHERE 
-      (lower(home_team) = lower(:home_team) AND halftime_home < halftime_away AND fulltime_home >= fulltime_away)
-      OR (lower(away_team) = lower(:home_team) AND halftime_away < halftime_home AND fulltime_away >= fulltime_home)
-    ) AS home_team_comebacks,
-    COUNT(*) FILTER (WHERE 
-      (lower(home_team) = lower(:away_team) AND halftime_home < halftime_away AND fulltime_home >= fulltime_away)
-      OR (lower(away_team) = lower(:away_team) AND halftime_away < halftime_home AND fulltime_away >= fulltime_home)
-    ) AS away_team_comebacks,
-    AVG(ABS(halftime_home - halftime_away)) AS avg_ht_goal_diff,
-    AVG(ABS(fulltime_home - fulltime_away)) AS avg_ft_goal_diff
-  FROM matches m
-  WHERE m.league = :league
-    AND (
-      (lower(m.home_team) = lower(:home_team) AND lower(m.away_team) = lower(:away_team))
-      OR (lower(m.home_team) = lower(:away_team) AND lower(m.away_team) = lower(:home_team))
-    )
-  ORDER BY m.match_date DESC
-  LIMIT 20
+-- 1. Function to get comeback/blown lead statistics for a team, returning JSONB
+CREATE OR REPLACE FUNCTION public.get_legend_mode_comeback_stats(
+    p_team_name TEXT,
+    p_lookback_days INTEGER DEFAULT 90
 )
+RETURNS JSONB
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    v_total_matches_in_period BIGINT;
+    v_total_comebacks BIGINT;
+    v_total_blown_leads BIGINT;
+    v_comeback_attempts BIGINT;
+    v_blown_lead_attempts BIGINT;
+    v_comeback_success_rate NUMERIC(5,2);
+    v_blown_lead_rate NUMERIC(5,2);
+    v_avg_comeback_goal_diff NUMERIC(5,2);
+    v_avg_blown_lead_goal_diff NUMERIC(5,2);
+    v_resilience_factor NUMERIC(5,4);
+    v_mental_strength_factor NUMERIC(5,4);
+BEGIN
+    WITH TeamMatches AS (
+        SELECT
+            id,
+            match_time,
+            home_team,
+            away_team,
+            half_time_home_goals,
+            half_time_away_goals,
+            full_time_home_goals,
+            full_time_away_goals
+        FROM
+            public.matches
+        WHERE
+            (home_team = p_team_name OR away_team = p_team_name)
+            AND match_time >= (NOW() - INTERVAL '1 day' * p_lookback_days)
+    ),
+    ComebackAnalysis AS (
+        SELECT
+            tm.id,
+            -- Determine if it was a comeback for the analyzed team
+            CASE
+                WHEN tm.home_team = p_team_name AND tm.half_time_home_goals < tm.half_time_away_goals AND tm.full_time_home_goals > tm.full_time_away_goals THEN TRUE
+                WHEN tm.away_team = p_team_name AND tm.half_time_away_goals < tm.half_time_home_goals AND tm.full_time_away_goals > tm.full_time_home_goals THEN TRUE
+                ELSE FALSE
+            END AS is_comeback,
+            -- Determine if the analyzed team blew a lead
+            CASE
+                WHEN tm.home_team = p_team_name AND tm.half_time_home_goals > tm.half_time_away_goals AND tm.full_time_home_goals < tm.full_time_away_goals THEN TRUE
+                WHEN tm.away_team = p_team_name AND tm.half_time_away_goals > tm.half_time_home_goals AND tm.full_time_away_goals < tm.full_time_home_goals THEN TRUE
+                ELSE FALSE
+            END AS is_blown_lead,
+            -- Half-time goal difference for the analyzed team
+            CASE
+                WHEN tm.home_team = p_team_name THEN tm.half_time_home_goals - tm.half_time_away_goals
+                ELSE tm.half_time_away_goals - tm.half_time_home_goals
+            END AS half_time_goal_diff,
+            -- Full-time goal difference for the analyzed team
+            CASE
+                WHEN tm.home_team = p_team_name THEN tm.full_time_home_goals - tm.full_time_away_goals
+                ELSE tm.full_time_away_goals - tm.full_time_home_goals
+            END AS full_time_goal_diff
+        FROM
+            TeamMatches tm
+    )
+    SELECT
+        COUNT(id)::BIGINT,
+        SUM(CASE WHEN is_comeback THEN 1 ELSE 0 END)::BIGINT,
+        SUM(CASE WHEN is_blown_lead THEN 1 ELSE 0 END)::BIGINT,
+        COUNT(CASE WHEN half_time_goal_diff < 0 THEN 1 ELSE 0 END)::BIGINT, -- Comeback attempts
+        COUNT(CASE WHEN half_time_goal_diff > 0 THEN 1 ELSE 0 END)::BIGINT, -- Blown lead attempts
+        ROUND(
+            (SUM(CASE WHEN is_comeback THEN 1 ELSE 0 END)::NUMERIC / NULLIF(COUNT(CASE WHEN half_time_goal_diff < 0 THEN 1 ELSE 0 END), 0)) * 100, 2
+        )::NUMERIC(5,2),
+        ROUND(
+            (SUM(CASE WHEN is_blown_lead THEN 1 ELSE 0 END)::NUMERIC / NULLIF(COUNT(CASE WHEN half_time_goal_diff > 0 THEN 1 ELSE 0 END), 0)) * 100, 2
+        )::NUMERIC(5,2),
+        ROUND(
+            AVG(CASE WHEN is_comeback THEN ABS(half_time_goal_diff) ELSE NULL END), 2
+        )::NUMERIC(5,2),
+        ROUND(
+            AVG(CASE WHEN is_blown_lead THEN ABS(half_time_goal_diff) ELSE NULL END), 2
+        )::NUMERIC(5,2),
+        ROUND(
+            (SUM(CASE WHEN half_time_goal_diff < 0 AND full_time_goal_diff >= 0 THEN 1 ELSE 0 END)::NUMERIC / NULLIF(COUNT(CASE WHEN half_time_goal_diff < 0 THEN 1 ELSE 0 END), 0)), 4
+        )::NUMERIC(5,4),
+        ROUND(
+            (SUM(CASE WHEN half_time_goal_diff > 0 AND full_time_goal_diff >= 0 THEN 1 ELSE 0 END)::NUMERIC / NULLIF(COUNT(CASE WHEN half_time_goal_diff > 0 THEN 1 ELSE 0 END), 0)), 4
+        )::NUMERIC(5,4)
+    INTO
+        v_total_matches_in_period,
+        v_total_comebacks,
+        v_total_blown_leads,
+        v_comeback_attempts,
+        v_blown_lead_attempts,
+        v_comeback_success_rate,
+        v_blown_lead_rate,
+        v_avg_comeback_goal_diff,
+        v_avg_blown_lead_goal_diff,
+        v_resilience_factor,
+        v_mental_strength_factor
+    FROM
+        ComebackAnalysis;
 
--- LEGEND MODE JSON OUTPUT
-SELECT json_build_object(
-  'home', json_build_object(
-    'basic_stats', json_build_object(
-      'total_matches', hcb.total_matches,
-      'form_index', CASE WHEN hcb.total_matches > 0 THEN round((hcb.comeback_wins * 3 + hcb.comeback_draws)::numeric / (hcb.total_matches * 3), 3) ELSE 0 END
-    ),
-    'comeback_breakdown', json_build_object(
-      'comeback_wins', hcb.comeback_wins,
-      'comeback_draws', hcb.comeback_draws,
-      'total_comebacks', hcb.total_comebacks,
-      'comeback_frequency', CASE WHEN hcb.total_matches > 0 THEN round(hcb.total_comebacks::numeric / hcb.total_matches, 3) ELSE 0 END,
-      'comeback_success_rate', CASE WHEN hcb.total_comebacks > 0 THEN round(hcb.comeback_wins::numeric / hcb.total_comebacks, 3) ELSE 0 END
-    ),
-    'comeback_by_deficit', json_build_object(
-      'from_1goal', hcb.comeback_1goal,
-      'from_2goal', hcb.comeback_2goal,
-      'from_3plus_goal', hcb.comeback_3plus_goal,
-      'max_deficit_overcome', hcb.max_comeback_deficit
-    ),
-    'blown_leads', json_build_object(
-      'blown_lead_losses', hcb.blown_lead_losses,
-      'blown_lead_draws', hcb.blown_lead_draws,
-      'blown_lead_frequency', CASE WHEN hcb.total_matches > 0 THEN round((hcb.blown_lead_losses + hcb.blown_lead_draws)::numeric / hcb.total_matches, 3) ELSE 0 END
-    ),
-    'mental_strength', json_build_object(
-      'avg_comeback_margin', round(COALESCE(hcb.avg_comeback_margin, 0)::numeric, 2),
-      'resilience_score', CASE WHEN hcb.total_matches > 0 THEN round((hcb.total_comebacks * 2 - (hcb.blown_lead_losses + hcb.blown_lead_draws))::numeric / hcb.total_matches, 3) ELSE 0 END
-    )
-  ),
-  'away', json_build_object(
-    'basic_stats', json_build_object(
-      'total_matches', acb.total_matches,
-      'form_index', CASE WHEN acb.total_matches > 0 THEN round((acb.comeback_wins * 3 + acb.comeback_draws)::numeric / (acb.total_matches * 3), 3) ELSE 0 END
-    ),
-    'comeback_breakdown', json_build_object(
-      'comeback_wins', acb.comeback_wins,
-      'comeback_draws', acb.comeback_draws,
-      'total_comebacks', acb.total_comebacks,
-      'comeback_frequency', CASE WHEN acb.total_matches > 0 THEN round(acb.total_comebacks::numeric / acb.total_matches, 3) ELSE 0 END,
-      'comeback_success_rate', CASE WHEN acb.total_comebacks > 0 THEN round(acb.comeback_wins::numeric / acb.total_comebacks, 3) ELSE 0 END
-    ),
-    'comeback_by_deficit', json_build_object(
-      'from_1goal', acb.comeback_1goal,
-      'from_2goal', acb.comeback_2goal,
-      'from_3plus_goal', acb.comeback_3plus_goal,
-      'max_deficit_overcome', acb.max_comeback_deficit
-    ),
-    'blown_leads', json_build_object(
-      'blown_lead_losses', acb.blown_lead_losses,
-      'blown_lead_draws', acb.blown_lead_draws,
-      'blown_lead_frequency', CASE WHEN acb.total_matches > 0 THEN round((acb.blown_lead_losses + acb.blown_lead_draws)::numeric / acb.total_matches, 3) ELSE 0 END
-    ),
-    'mental_strength', json_build_object(
-      'avg_comeback_margin', round(COALESCE(acb.avg_comeback_margin, 0)::numeric, 2),
-      'resilience_score', CASE WHEN acb.total_matches > 0 THEN round((acb.total_comebacks * 2 - (acb.blown_lead_losses + acb.blown_lead_draws))::numeric / acb.total_matches, 3) ELSE 0 END
-    )
-  ),
-  'h2h_comeback_analysis', json_build_object(
-    'total_matches', h2h.total_matches,
-    'home_team_comebacks', h2h.home_team_comebacks,
-    'away_team_comebacks', h2h.away_team_comebacks,
-    'comeback_advantage', CASE WHEN h2h.total_matches > 0 THEN 
-      round((h2h.home_team_comebacks - h2h.away_team_comebacks)::numeric / h2h.total_matches, 3) ELSE 0 END,
-    'avg_intensity', round(COALESCE(h2h.avg_ft_goal_diff, 0)::numeric, 2)
-  ),
-  'legend_mode_insights', json_build_object(
-    'comeback_kings', CASE 
-      WHEN hcb.total_matches > 0 AND acb.total_matches > 0 THEN
-        CASE WHEN (hcb.total_comebacks::numeric / hcb.total_matches) > (acb.total_comebacks::numeric / acb.total_matches) 
-        THEN :home_team ELSE :away_team END
-      ELSE 'insufficient_data' END,
-    'mental_toughness_winner', CASE 
-      WHEN hcb.total_matches > 0 AND acb.total_matches > 0 THEN
-        CASE WHEN ((hcb.total_comebacks * 2 - (hcb.blown_lead_losses + hcb.blown_lead_draws))::numeric / hcb.total_matches) > 
-                  ((acb.total_comebacks * 2 - (acb.blown_lead_losses + acb.blown_lead_draws))::numeric / acb.total_matches)
-        THEN :home_team ELSE :away_team END
-      ELSE 'insufficient_data' END,
-    'prediction_weight', json_build_object(
-      'comeback_factor_importance', 0.25,
-      'mental_strength_bonus', 0.15,
-      'h2h_comeback_history', 0.10
-    )
-  ),
-  'meta', json_build_object(
-    'generated_at', now(),
-    'model_version', 'legend_mode_v1',
-    'league', :league,
-    'home_team', :home_team,
-    'away_team', :away_team,
-    'analysis_depth', 'legend_mode_comeback_breakdown'
-  )
-) AS legend_features_json
-FROM home_comeback_breakdown hcb, away_comeback_breakdown acb, h2h_comeback_analysis h2h;
+    RETURN jsonb_build_object(
+        'team_name', p_team_name,
+        'lookback_days', p_lookback_days,
+        'total_matches_in_period', v_total_matches_in_period,
+        'total_comebacks', v_total_comebacks,
+        'total_blown_leads', v_total_blown_leads,
+        'comeback_attempts', v_comeback_attempts,
+        'blown_lead_attempts', v_blown_lead_attempts,
+        'comeback_success_rate', v_comeback_success_rate,
+        'blown_lead_rate', v_blown_lead_rate,
+        'avg_comeback_goal_diff', v_avg_comeback_goal_diff,
+        'avg_blown_lead_goal_diff', v_avg_blown_lead_goal_diff,
+        'resilience_factor', v_resilience_factor,
+        'mental_strength_factor', v_mental_strength_factor
+    );
+END;
+$$;
+
+-- Grant execution permissions
+GRANT EXECUTE ON FUNCTION public.get_legend_mode_comeback_stats(TEXT, INTEGER) TO authenticated;
+
+COMMIT; -- End the transaction
+
+-- Verification (for development/testing)
+SELECT 'Legend Mode comeback breakdown function created successfully!' AS status;
+-- Example usage:
+-- SELECT public.get_legend_mode_comeback_stats('Barcelona', 90);
