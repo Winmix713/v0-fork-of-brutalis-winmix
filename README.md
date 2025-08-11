@@ -45,6 +45,7 @@ Labdarúgó mérkőzések adatbázisa, elemzése és AI-alapú előrejelzések. 
 - docs/system-documentation-v21.md – Rendszer állapot és architektúra
 - docs/qa-checklist.md – Kiadás előtti QA ellenőrzőlista
 - docs/supabase-integration-guide.md – Supabase integráció
+- docs/next-steps.md – Következő lépések javaslatok
 
 ## Licenc
 Belső fejlesztői projekt. A felhasználás a csapat irányelvei szerint történik.
