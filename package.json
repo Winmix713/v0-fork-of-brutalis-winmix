@@ -2,6 +2,10 @@
   "name": "football-matches",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=18.17.0"
+  },
   "scripts": {
     "build": "next build",
     "db:cleanup": "node scripts/cleanup-cache.js",
@@ -43,7 +47,13 @@
     "@radix-ui/react-alert-dialog": "^1.0.5",
     "@radix-ui/react-avatar": "^1.0.4",
     "@radix-ui/react-dropdown-menu": "^2.0.6",
+    "@radix-ui/react-label": "^2.1.7",
+    "@radix-ui/react-progress": "^1.1.7",
+    "@radix-ui/react-scroll-area": "^1.2.9",
+    "@radix-ui/react-select": "^2.2.5",
+    "@radix-ui/react-separator": "^1.1.7",
     "@radix-ui/react-slider": "latest",
+    "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tooltip": "^1.0.7",
     "@supabase/supabase-js": "latest",
     "@testing-library/react-hooks": "latest",
@@ -55,8 +65,10 @@
     "date-fns-tz": "latest",
     "dotenv": "latest",
     "fs": "latest",
+    "geist": "^1.4.2",
     "lucide-react": "^0.454.0",
     "next": "14.2.16",
+    "next-themes": "^0.4.6",
     "node-fetch": "latest",
     "node-notifier": "latest",
     "path": "latest",
@@ -82,7 +94,7 @@
     "jest": "^29.7.0",
     "jest-environment-jsdom": "^29.7.0",
     "postcss": "^8.5",
-    "tailwindcss": "^3",
+    "tailwindcss": "^3.4.17",
     "typescript": "^5"
   }
 }
