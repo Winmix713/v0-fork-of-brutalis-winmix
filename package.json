@@ -2,6 +2,10 @@
   "name": "football-matches",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.14.0",
+  "engines": {
+    "node": ">=18.17.0"
+  },
   "scripts": {
     "build": "next build",
     "db:cleanup": "node scripts/cleanup-cache.js",
