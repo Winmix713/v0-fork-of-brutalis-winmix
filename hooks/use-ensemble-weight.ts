@@ -61,24 +61,13 @@ export function useEnsembleWeight(initialWeights?: EnsembleWeights) {
     }
   }, [weights, isLoading])
 
-  const updateFormWeight = useCallback((formWeight: number) => {
-    const clampedWeight = Math.max(0, Math.min(1, formWeight))
+  const handleWeightChange = useCallback((newWeight: number[]) => {
+    // Slider component typically returns an array, take the first value
+    const clampedWeight = Math.max(0, Math.min(1, newWeight[0]))
     setWeights({
       form: clampedWeight,
       h2h: 1 - clampedWeight,
     })
-  }, [])
-
-  const updateH2HWeight = useCallback((h2hWeight: number) => {
-    const clampedWeight = Math.max(0, Math.min(1, h2hWeight))
-    setWeights({
-      form: 1 - clampedWeight,
-      h2h: clampedWeight,
-    })
-  }, [])
-
-  const resetWeights = useCallback(() => {
-    setWeights(DEFAULT_WEIGHTS)
   }, [])
 
   const blendPredictions = useCallback(
@@ -118,9 +107,7 @@ export function useEnsembleWeight(initialWeights?: EnsembleWeights) {
   return {
     weights,
     isLoading,
-    updateFormWeight,
-    updateH2HWeight,
-    resetWeights,
+    setWeight: handleWeightChange,
     blendPredictions,
     getWeightDescription,
     getConfidenceAdjustment,

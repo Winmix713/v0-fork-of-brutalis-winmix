@@ -1,79 +1,73 @@
-"use client"
+// jest.setup.js
+// This file is executed before all tests.
 
-import { jest } from "@jest/globals"
-import "@testing-library/jest-dom"
+const jest = require("jest")
 
-// Mock Next.js router
-jest.mock("next/router", () => ({
-  useRouter() {
-    return {
-      route: "/",
-      pathname: "/",
-      query: {},
-      asPath: "/",
-      push: jest.fn(),
-      pop: jest.fn(),
-      reload: jest.fn(),
-      back: jest.fn(),
-      prefetch: jest.fn().mockResolvedValue(undefined),
-      beforePopState: jest.fn(),
-      events: {
-        on: jest.fn(),
-        off: jest.fn(),
-        emit: jest.fn(),
-      },
-    }
-  },
+// Mock environment variables for tests if needed
+process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "http://localhost:54321"
+process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "mock-anon-key"
+process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "mock-service-role-key"
+
+// Mock fetch API for tests
+global.fetch = jest.fn((url, options) => {
+  if (url.includes("/api/enhanced-prediction")) {
+    // Simulate successful prediction response
+    return Promise.resolve({
+      ok: true,
+      json: () =>
+        Promise.resolve({
+          home_win_probability: 0.6,
+          draw_probability: 0.2,
+          away_win_probability: 0.2,
+          predicted_home_goals: 2,
+          predicted_away_goals: 1,
+          predicted_total_goals: 3,
+          confidence_score: 0.85,
+          model_version: "test-v1.0",
+          prediction_type: "test-enhanced",
+          league: "Test League",
+          predicted_at: new Date().toISOString(),
+          expires_at: new Date(Date.now() + 3600000).toISOString(), // 1 hour from now
+          cache_key: "test-cache-key",
+        }),
+    })
+  }
+  // Default mock for other fetches
+  return Promise.resolve({
+    ok: true,
+    json: () => Promise.resolve({}),
+    text: () => Promise.resolve(""),
+  })
+})
+
+// Mock Supabase client for tests
+jest.mock("@supabase/supabase-js", () => ({
+  createClient: jest.fn(() => ({
+    from: jest.fn(() => ({
+      select: jest.fn(() => ({
+        eq: jest.fn(() => ({
+          single: jest.fn(() => Promise.resolve({ data: null, error: { code: "PGRST116", message: "No rows found" } })), // Default to cache miss
+          limit: jest.fn(() => Promise.resolve({ data: [], error: null })),
+          distinct: jest.fn(() => Promise.resolve({ data: [], error: null })),
+        })),
+        order: jest.fn(() => ({
+          limit: jest.fn(() => Promise.resolve({ data: [], error: null })),
+        })),
+        or: jest.fn(() => ({
+          order: jest.fn(() => ({
+            limit: jest.fn(() => Promise.resolve({ data: [], error: null })),
+          })),
+        })),
+      })),
+      upsert: jest.fn(() => ({
+        select: jest.fn(() => ({
+          single: jest.fn(() =>
+            Promise.resolve({ data: { id: "mock-uuid", cache_key: "mock-cache-key" }, error: null }),
+          ),
+        })),
+      })),
+      insert: jest.fn(() => Promise.resolve({ data: [], error: null })),
+      rpc: jest.fn(() => Promise.resolve({ data: {}, error: null })),
+    })),
+  })),
 }))
-
-// Mock Next.js navigation
-jest.mock("next/navigation", () => ({
-  useRouter() {
-    return {
-      push: jest.fn(),
-      replace: jest.fn(),
-      prefetch: jest.fn(),
-      back: jest.fn(),
-      forward: jest.fn(),
-      refresh: jest.fn(),
-    }
-  },
-  useSearchParams() {
-    return new URLSearchParams()
-  },
-  usePathname() {
-    return "/"
-  },
-}))
-
-// Mock environment variables
-process.env.NEXT_PUBLIC_SUPABASE_URL = "https://test.supabase.co"
-process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key"
-process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key"
-
-// Mock fetch globally
-global.fetch = jest.fn()
-
-// Mock crypto for Node.js environment
-Object.defineProperty(global, "crypto", {
-  value: {
-    createHash: jest.fn().mockReturnValue({
-      update: jest.fn().mockReturnThis(),
-      digest: jest.fn().mockReturnValue("mocked-hash"),
-    }),
-  },
-})
-
-// Mock performance API
-Object.defineProperty(global, "performance", {
-  value: {
-    now: jest.fn(() => Date.now()),
-  },
-})
-
-// Clean up after each test
-const { afterEach } = require("@jest/globals")
-
-afterEach(() => {
-  jest.clearAllMocks()
-})

@@ -1,7 +1,8 @@
 const fs = require("fs")
 const path = require("path")
-const csv = require("csv-parser")
+const { parse } = require("csv-parse/sync")
 const { createObjectCsvWriter } = require("csv-writer")
+const fetch = require("node-fetch")
 
 // Configuration
 const INPUT_CSV = path.join(__dirname, "..", "data", "football_matches.csv")
@@ -83,91 +84,129 @@ function cleanValue(value, columnType = "string") {
   }
 }
 
-async function cleanCSVData() {
-  console.log("🧹 Cleaning CSV data...")
+async function cleanCSVData(inputFilePath, outputFilePath) {
+  try {
+    const inputCsvPath = path.resolve(process.cwd(), inputFilePath)
+    const outputCsvPath = path.resolve(process.cwd(), outputFilePath)
+    console.log(`Reading CSV from: ${inputCsvPath}`)
 
-  const cleanedData = []
-  let processedRows = 0
-  let skippedRows = 0
+    const fileContent = fs.readFileSync(inputCsvPath, "utf8")
 
-  return new Promise((resolve, reject) => {
-    fs.createReadStream(INPUT_CSV)
-      .pipe(csv())
-      .on("data", (row) => {
-        processedRows++
+    const records = parse(fileContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    })
 
-        // Clean and validate row data
-        const cleanedRow = {}
-        let isValidRow = true
+    console.log(`Found ${records.length} records.`)
 
-        // Clean each field
-        Object.keys(row).forEach((key) => {
-          const cleanKey = key.trim().toLowerCase().replace(/\s+/g, "_")
-          let value = row[key]
+    const cleanedRecords = records.map((record) => {
+      // Example cleaning:
+      // 1. Ensure match_time is in a valid format (e.g., add a default date)
+      let cleanedMatchTime = record.match_time
+      if (cleanedMatchTime && !cleanedMatchTime.includes("-")) {
+        // If only time is present, prepend a default date
+        cleanedMatchTime = `2023-01-01 ${cleanedMatchTime}:00` // Add seconds
+      } else if (cleanedMatchTime && !cleanedMatchTime.includes(":")) {
+        // If only date is present, append a default time
+        cleanedMatchTime = `${cleanedMatchTime} 00:00:00`
+      }
+      // Convert to ISO string if it's a valid date/time
+      try {
+        cleanedMatchTime = new Date(cleanedMatchTime).toISOString()
+      } catch (e) {
+        console.warn(`Could not parse match_time '${record.match_time}', setting to null.`)
+        cleanedMatchTime = null // Set to null if invalid
+      }
 
-          // Clean value
-          if (typeof value === "string") {
-            value = value.trim()
+      // 2. Convert goal fields to numbers, default to 0 if invalid
+      const parseGoal = (value) => {
+        const num = Number.parseInt(value, 10)
+        return isNaN(num) ? 0 : num
+      }
 
-            // Convert empty strings to null
-            if (value === "" || value === "N/A" || value === "null") {
-              value = null
-            }
+      return {
+        ...record, // Keep all other fields
+        match_time: cleanedMatchTime,
+        full_time_home_goals: parseGoal(record.full_time_home_goals),
+        full_time_away_goals: parseGoal(record.full_time_away_goals),
+        half_time_home_goals: parseGoal(record.half_time_home_goals),
+        half_time_away_goals: parseGoal(record.half_time_away_goals),
+        // Add more cleaning rules as needed for other columns
+      }
+    })
 
-            // Try to convert numbers
-            if (value && !isNaN(value) && !isNaN(Number.parseFloat(value))) {
-              value = Number.parseFloat(value)
-            }
-          }
+    // Convert cleaned records back to CSV string
+    const csvString = [
+      Object.keys(cleanedRecords[0]).join(","), // Headers
+      ...cleanedRecords.map((row) => Object.values(row).join(",")), // Data rows
+    ].join("\n")
 
-          cleanedRow[cleanKey] = value
-        })
-
-        // Validate required fields
-        const requiredFields = ["home_team", "away_team", "match_time"]
-        for (const field of requiredFields) {
-          if (!cleanedRow[field]) {
-            isValidRow = false
-            break
-          }
-        }
-
-        if (isValidRow) {
-          cleanedData.push(cleanedRow)
-        } else {
-          skippedRows++
-        }
-      })
-      .on("end", async () => {
-        console.log(`✅ Processing complete:`)
-        console.log(`  📊 Total rows processed: ${processedRows}`)
-        console.log(`  ✅ Valid rows: ${cleanedData.length}`)
-        console.log(`  ❌ Skipped rows: ${skippedRows}`)
-
-        if (cleanedData.length > 0) {
-          // Write cleaned data to new file
-          const csvWriter = createObjectCsvWriter({
-            path: OUTPUT_CSV,
-            header: Object.keys(cleanedData[0]).map((key) => ({
-              id: key,
-              title: key,
-            })),
-          })
-
-          await csvWriter.writeRecords(cleanedData)
-          console.log(`💾 Cleaned data saved to: ${OUTPUT_CSV}`)
-        }
-
-        resolve({ cleanedData, processedRows, skippedRows })
-      })
-      .on("error", (error) => {
-        console.error("❌ Error cleaning CSV:", error)
-        reject(error)
-      })
-  })
+    fs.writeFileSync(outputCsvPath, csvString, "utf8")
+    console.log(`Cleaned data written to: ${outputCsvPath}`)
+  } catch (err) {
+    console.error("Failed to clean CSV data:", err.message)
+  }
 }
 
-function cleanCSV() {
+// Example usage:
+// cleanCsvData("data/input.csv", "data/output_cleaned.csv"); // Adjust paths as needed
+
+// For the purpose of v0 execution, we'll simulate fetching the CSV from the provided URL.
+async function runCleanFromUrl(url) {
+  try {
+    console.log(`Fetching CSV data from URL for cleaning: ${url}`)
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    const csvContent = await response.text()
+
+    const records = parse(csvContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    })
+
+    console.log(`Found ${records.length} records from URL for cleaning.`)
+
+    const cleanedRecords = records.map((record) => {
+      let cleanedMatchTime = record.match_time
+      if (cleanedMatchTime && !cleanedMatchTime.includes("-")) {
+        cleanedMatchTime = `2023-01-01 ${cleanedMatchTime}:00`
+      } else if (cleanedMatchTime && !cleanedMatchTime.includes(":")) {
+        cleanedMatchTime = `${cleanedMatchTime} 00:00:00`
+      }
+      try {
+        cleanedMatchTime = new Date(cleanedMatchTime).toISOString()
+      } catch (e) {
+        console.warn(`Could not parse match_time '${record.match_time}', setting to null.`)
+        cleanedMatchTime = null
+      }
+
+      const parseGoal = (value) => {
+        const num = Number.parseInt(value, 10)
+        return isNaN(num) ? 0 : num
+      }
+
+      return {
+        ...record,
+        match_time: cleanedMatchTime,
+        full_time_home_goals: parseGoal(record.full_time_home_goals),
+        full_time_away_goals: parseGoal(record.full_time_away_goals),
+        half_time_home_goals: parseGoal(record.half_time_home_goals),
+        half_time_away_goals: parseGoal(record.half_time_away_goals),
+      }
+    })
+
+    console.log("Cleaned data (first 5 records):", cleanedRecords.slice(0, 5))
+    console.log("Data cleaning process completed.")
+  } catch (err) {
+    console.error("Failed to clean CSV data from URL:", err.message)
+  }
+}
+
+async function cleanCSV() {
   console.log("🧹 Starting CSV cleaning process...")
 
   if (!fs.existsSync(INPUT_CSV)) {
@@ -176,125 +215,7 @@ function cleanCSV() {
   }
 
   try {
-    const csvContent = fs.readFileSync(INPUT_CSV, "utf-8")
-    const lines = csvContent.split("\n").filter((line) => line.trim())
-
-    if (lines.length === 0) {
-      console.error("❌ CSV file is empty")
-      return
-    }
-
-    console.log(`📊 Processing ${lines.length} lines...`)
-
-    // Remove BOM if present
-    if (lines[0].charCodeAt(0) === 65279) {
-      lines[0] = lines[0].substring(1)
-      console.log("✅ Removed BOM from first line")
-    }
-
-    // Parse and clean headers
-    const originalHeaders = parseCSVLine(lines[0])
-    const cleanedHeaders = originalHeaders.map((header) => {
-      return (
-        header
-          .toLowerCase()
-          .replace(/[^a-z0-9]/g, "_")
-          .replace(/_+/g, "_")
-          .replace(/^_|_$/g, "") || "unnamed_column"
-      )
-    })
-
-    console.log("📋 Header mapping:")
-    originalHeaders.forEach((original, index) => {
-      if (original !== cleanedHeaders[index]) {
-        console.log(`   "${original}" -> "${cleanedHeaders[index]}"`)
-      }
-    })
-
-    // Define column types for cleaning
-    const columnTypes = cleanedHeaders.map((header) => {
-      if (header.includes("goal") || header.includes("score")) return "integer"
-      if (header.includes("date")) return "date"
-      if (header.includes("time")) return "time"
-      if (header.includes("id")) return "integer"
-      return "string"
-    })
-
-    // Process data lines
-    const cleanedLines = [cleanedHeaders.join(",")]
-    const dataLines = lines.slice(1)
-    let processedRows = 0
-    let skippedRows = 0
-
-    for (let i = 0; i < dataLines.length; i++) {
-      try {
-        const row = parseCSVLine(dataLines[i])
-
-        // Skip rows with wrong number of columns
-        if (row.length !== cleanedHeaders.length) {
-          console.warn(`⚠️  Row ${i + 2}: Expected ${cleanedHeaders.length} columns, got ${row.length}. Skipping.`)
-          skippedRows++
-          continue
-        }
-
-        // Clean each value
-        const cleanedRow = row.map((value, colIndex) => {
-          const cleaned = cleanValue(value, columnTypes[colIndex])
-          return cleaned === null ? "" : cleaned.toString()
-        })
-
-        // Add quotes around values that contain commas or quotes
-        const quotedRow = cleanedRow.map((value) => {
-          if (value.includes(",") || value.includes('"') || value.includes("\n")) {
-            return `"${value.replace(/"/g, '""')}"`
-          }
-          return value
-        })
-
-        cleanedLines.push(quotedRow.join(","))
-        processedRows++
-
-        if (processedRows % 1000 === 0) {
-          console.log(`📈 Processed ${processedRows} rows...`)
-        }
-      } catch (error) {
-        console.warn(`⚠️  Error processing row ${i + 2}: ${error.message}. Skipping.`)
-        skippedRows++
-      }
-    }
-
-    // Write cleaned CSV
-    fs.writeFileSync(OUTPUT_CSV, cleanedLines.join("\n"))
-
-    console.log("\n✅ CSV cleaning completed!")
-    console.log(`📊 Summary:`)
-    console.log(`   Input file: ${INPUT_CSV}`)
-    console.log(`   Output file: ${OUTPUT_CSV}`)
-    console.log(`   Original rows: ${dataLines.length}`)
-    console.log(`   Processed rows: ${processedRows}`)
-    console.log(`   Skipped rows: ${skippedRows}`)
-    console.log(`   Success rate: ${((processedRows / dataLines.length) * 100).toFixed(2)}%`)
-
-    // Generate column mapping file for reference
-    const mappingFile = path.join(OUTPUT_DIR, "column_mapping.json")
-    const mapping = {
-      originalHeaders,
-      cleanedHeaders,
-      columnTypes,
-      mapping: originalHeaders.map((original, index) => ({
-        original,
-        cleaned: cleanedHeaders[index],
-        type: columnTypes[index],
-      })),
-    }
-
-    fs.writeFileSync(mappingFile, JSON.stringify(mapping, null, 2))
-    console.log(`📋 Column mapping saved to: ${mappingFile}`)
-
-    console.log("\n🎯 Next steps:")
-    console.log("1. Review the cleaned CSV file")
-    console.log("2. Run scripts/01-create-matches-table.sql to create the database table")
-    console.log("3. Run scripts/import-csv-data.js to import the cleaned data")
+    await cleanCSVData(INPUT_CSV, OUTPUT_CSV)
   } catch (error) {
     console.error("❌ Error cleaning CSV:", error.message)
     console.error("Stack trace:", error.stack)

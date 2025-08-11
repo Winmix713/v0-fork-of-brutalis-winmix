@@ -3,267 +3,141 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Loader2, Trophy, Calendar } from "lucide-react"
+import { Loader2, RefreshCw } from "lucide-react"
+import { safeFormatDate } from "@/lib/date-utils"
 
 interface Match {
   id: number
-  match_time: string
   home_team: string
   away_team: string
-  half_time_home_goals: number
-  half_time_away_goals: number
+  match_time: string // ISO string date-time
   full_time_home_goals: number
   full_time_away_goals: number
-  created_at: string
-}
-
-interface FormattedMatch extends Match {
-  formatted_result: string
+  league: string
 }
 
 export default function DemoMatches() {
-  const [matches, setMatches] = useState<FormattedMatch[]>([])
+  const [matches, setMatches] = useState<Match[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const matchesPerPage = 10
 
-  useEffect(() => {
-    fetchMatches()
-  }, [])
-
-  const fetchMatches = async () => {
+  const fetchDemoMatches = async () => {
+    setLoading(true)
+    setError(null)
     try {
-      setLoading(true)
-      setError(null)
+      // In a real application, you'd fetch from your Next.js API route here
+      // For demonstration, we'll use mock data
+      await new Promise((resolve) => setTimeout(resolve, 1000)) // Simulate API call
 
-      // Mock data for demonstration
-      const mockMatches: FormattedMatch[] = [
+      const mockMatches: Match[] = [
         {
           id: 1,
-          match_time: "2024-01-15T15:00:00Z",
           home_team: "Barcelona",
-          away_team: "Real Madrid",
-          half_time_home_goals: 1,
-          half_time_away_goals: 0,
-          full_time_home_goals: 2,
-          full_time_away_goals: 1,
-          created_at: "2024-01-15T17:00:00Z",
-          formatted_result: "2-1",
+          away_team: "Madrid Fehér",
+          match_time: "2023-10-28T16:15:00Z",
+          full_time_home_goals: 1,
+          full_time_away_goals: 2,
+          league: "La Liga",
         },
         {
           id: 2,
-          match_time: "2024-01-14T18:30:00Z",
-          home_team: "Valencia",
-          away_team: "Sevilla",
-          half_time_home_goals: 0,
-          half_time_away_goals: 1,
+          home_team: "Sevilla Piros",
+          away_team: "Valencia",
+          match_time: "2023-10-29T18:30:00Z",
           full_time_home_goals: 1,
           full_time_away_goals: 1,
-          created_at: "2024-01-14T20:30:00Z",
-          formatted_result: "1-1",
+          league: "La Liga",
         },
         {
           id: 3,
-          match_time: "2024-01-13T20:00:00Z",
           home_team: "Bilbao",
-          away_team: "Villarreal",
-          half_time_home_goals: 2,
-          half_time_away_goals: 0,
-          full_time_home_goals: 3,
-          full_time_away_goals: 1,
-          created_at: "2024-01-13T22:00:00Z",
-          formatted_result: "3-1",
+          away_team: "Osasuna",
+          match_time: "2023-11-04T14:00:00Z",
+          full_time_home_goals: 2,
+          full_time_away_goals: 0,
+          league: "La Liga",
         },
         {
           id: 4,
-          match_time: "2024-01-12T16:15:00Z",
-          home_team: "Las Palmas",
-          away_team: "Getafe",
-          half_time_home_goals: 0,
-          half_time_away_goals: 0,
+          home_team: "Villarreal",
+          away_team: "Girona",
+          match_time: "2023-11-05T16:15:00Z",
           full_time_home_goals: 0,
-          full_time_away_goals: 2,
-          created_at: "2024-01-12T18:15:00Z",
-          formatted_result: "0-2",
+          full_time_away_goals: 0,
+          league: "La Liga",
         },
         {
           id: 5,
-          match_time: "2024-01-11T19:45:00Z",
-          home_team: "Girona",
+          home_team: "Madrid Piros",
           away_team: "Alaves",
-          half_time_home_goals: 1,
-          half_time_away_goals: 1,
-          full_time_home_goals: 2,
-          full_time_away_goals: 2,
-          created_at: "2024-01-11T21:45:00Z",
-          formatted_result: "2-2",
+          match_time: "2023-11-05T21:00:00Z",
+          full_time_home_goals: 3,
+          full_time_away_goals: 1,
+          league: "La Liga",
         },
       ]
-
       setMatches(mockMatches)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to fetch matches")
+    } catch (err: any) {
+      setError(err.message || "Ismeretlen hiba történt a demo mérkőzések betöltésekor.")
     } finally {
       setLoading(false)
     }
   }
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
-
-  const getResultBadgeColor = (homeGoals: number, awayGoals: number) => {
-    if (homeGoals > awayGoals) return "bg-green-500"
-    if (homeGoals < awayGoals) return "bg-red-500"
-    return "bg-yellow-500"
-  }
-
-  const isComeback = (match: Match) => {
-    const homeComeback =
-      match.half_time_home_goals < match.half_time_away_goals && match.full_time_home_goals > match.full_time_away_goals
-    const awayComeback =
-      match.half_time_away_goals < match.half_time_home_goals && match.full_time_away_goals > match.full_time_home_goals
-    return homeComeback || awayComeback
-  }
-
-  // Pagination
-  const indexOfLastMatch = currentPage * matchesPerPage
-  const indexOfFirstMatch = indexOfLastMatch - matchesPerPage
-  const currentMatches = matches.slice(indexOfFirstMatch, indexOfLastMatch)
-  const totalPages = Math.ceil(matches.length / matchesPerPage)
-
-  if (loading) {
-    return (
-      <Card className="w-full">
-        <CardContent className="flex items-center justify-center p-8">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="ml-2">Loading matches...</span>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (error) {
-    return (
-      <Card className="w-full">
-        <CardContent className="p-8">
-          <div className="text-center text-red-600">
-            <p>Error: {error}</p>
-            <Button onClick={fetchMatches} className="mt-4">
-              Try Again
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
+  useEffect(() => {
+    fetchDemoMatches()
+  }, [])
 
   return (
-    <div className="w-full space-y-4">
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Trophy className="h-5 w-5" />
-            Recent Football Matches
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
+    <Card className="rounded-3xl shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-2xl font-bold">Demo Mérkőzések</CardTitle>
+        <Button onClick={fetchDemoMatches} disabled={loading} variant="ghost" size="icon">
+          {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+            <span className="ml-3 text-gray-600">Mérkőzések betöltése...</span>
+          </div>
+        ) : error ? (
+          <div className="text-red-600 text-center p-4">
+            <p className="font-semibold">Hiba:</p>
+            <p>{error}</p>
+          </div>
+        ) : matches.length === 0 ? (
+          <div className="text-gray-500 text-center p-4">Nincs megjeleníthető demo mérkőzés.</div>
+        ) : (
           <div className="space-y-4">
-            {currentMatches.map((match) => (
-              <div key={match.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center space-x-2">
-                      <Calendar className="h-4 w-4 text-gray-500" />
-                      <span className="text-sm text-gray-600">{formatDate(match.match_time)}</span>
-                    </div>
-                    {isComeback(match) && (
-                      <Badge variant="secondary" className="bg-orange-100 text-orange-800">
-                        Comeback
-                      </Badge>
-                    )}
+            {matches.map((match) => (
+              <div
+                key={match.id}
+                className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl hover:bg-slate-100 transition-colors"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="text-sm text-slate-600 min-w-[120px]">{safeFormatDate(match.match_time)}</div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium">{match.home_team}</span>
+                    <span className="text-slate-600">vs</span>
+                    <span className="font-medium">{match.away_team}</span>
                   </div>
-                  <Badge
-                    className={`${getResultBadgeColor(match.full_time_home_goals, match.full_time_away_goals)} text-white`}
-                  >
-                    {match.formatted_result}
-                  </Badge>
                 </div>
 
-                <div className="mt-3 flex items-center justify-between">
-                  <div className="flex items-center space-x-4">
-                    <div className="text-right">
-                      <div className="font-semibold">{match.home_team}</div>
-                      <div className="text-sm text-gray-500">Home</div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <div className="font-bold text-lg">
+                      {match.full_time_home_goals} - {match.full_time_away_goals}
                     </div>
-                    <div className="text-center px-4">
-                      <div className="text-2xl font-bold">
-                        {match.full_time_home_goals} - {match.full_time_away_goals}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        HT: {match.half_time_home_goals}-{match.half_time_away_goals}
-                      </div>
-                    </div>
-                    <div className="text-left">
-                      <div className="font-semibold">{match.away_team}</div>
-                      <div className="text-sm text-gray-500">Away</div>
-                    </div>
+                    <div className="text-sm text-slate-600">FT</div>
                   </div>
                 </div>
               </div>
             ))}
           </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-center space-x-2 mt-6">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
-                disabled={currentPage === 1}
-              >
-                Previous
-              </Button>
-
-              <div className="flex items-center space-x-1">
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                  <Button
-                    key={page}
-                    variant={currentPage === page ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setCurrentPage(page)}
-                    className="w-8 h-8 p-0"
-                  >
-                    {page}
-                  </Button>
-                ))}
-              </div>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCurrentPage((prev) => Math.min(prev + 1, totalPages))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-              </Button>
-            </div>
-          )}
-
-          <div className="mt-4 text-center text-sm text-gray-500">
-            Showing {indexOfFirstMatch + 1}-{Math.min(indexOfLastMatch, matches.length)} of {matches.length} matches
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }

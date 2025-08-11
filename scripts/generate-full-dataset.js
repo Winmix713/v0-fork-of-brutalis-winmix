@@ -1,5 +1,24 @@
 import fs from "fs"
 import { createObjectCsvWriter } from "csv-writer"
+import { createClient } from "@supabase/supabase-js"
+import dotenv from "dotenv"
+import path from "path"
+
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") })
+
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error("Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in .env.local")
+  process.exit(1)
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    persistSession: false,
+  },
+})
 
 // Teljes CSV adathalmaz generálása a komponens számára
 const csvUrl =
@@ -8,49 +27,40 @@ const csvUrl =
 // Spanish La Liga teams
 const teams = [
   "Barcelona",
-  "Real Madrid",
+  "Madrid Fehér",
+  "Sevilla Piros",
   "Valencia",
-  "Sevilla",
   "Bilbao",
+  "Osasuna",
   "Villarreal",
-  "Las Palmas",
-  "Getafe",
   "Girona",
+  "Madrid Piros",
   "Alaves",
   "Mallorca",
-  "Osasuna",
-  "San Sebastian",
+  "Las Palmas",
   "Vigo",
-  "Betis",
-  "Rayo Vallecano",
-  "Cadiz",
-  "Elche",
-  "Almeria",
-  "Valladolid",
+  "Getafe",
+  "San Sebastian",
+  "Sevilla Zöld",
 ]
 
 // Team strength ratings (0-1 scale)
 const teamStrengths = {
   Barcelona: 0.85,
-  "Real Madrid": 0.88,
-  Valencia: 0.72,
-  Sevilla: 0.75,
+  "Madrid Fehér": 0.88,
+  "Sevilla Piros": 0.72,
+  Valencia: 0.75,
   Bilbao: 0.68,
-  Villarreal: 0.7,
-  "Las Palmas": 0.55,
-  Getafe: 0.58,
-  Girona: 0.6,
+  Osasuna: 0.7,
+  Villarreal: 0.55,
+  Girona: 0.58,
+  "Madrid Piros": 0.6,
   Alaves: 0.52,
   Mallorca: 0.56,
-  Osasuna: 0.54,
+  "Las Palmas": 0.54,
   "San Sebastian": 0.64,
   Vigo: 0.53,
-  Betis: 0.66,
-  "Rayo Vallecano": 0.59,
-  Cadiz: 0.48,
-  Elche: 0.45,
-  Almeria: 0.47,
-  Valladolid: 0.5,
+  "Sevilla Zöld": 0.66,
 }
 
 function generateMatch(homeTeam, awayTeam, matchDate) {
@@ -174,7 +184,7 @@ async function generateFullDataset() {
       totalGoals: matches.reduce((sum, m) => sum + m.full_time_home_goals + m.full_time_away_goals, 0),
       comebacks: matches.filter(
         (m) =>
-          (m.half_time_home_goals < m.half_time_away_goals && m.full_time_home_goals > m.full_time_away_goals) ||
+          (m.half_time_home_goals < m.half_time_away_goals && m.full_time_home_goals > m.half_time_away_goals) ||
           (m.half_time_away_goals < m.half_time_home_goals && m.full_time_away_goals > m.full_time_home_goals),
       ).length,
       draws: matches.filter((m) => m.full_time_home_goals === m.full_time_away_goals).length,
@@ -191,6 +201,22 @@ async function generateFullDataset() {
     // Save statistics
     fs.writeFileSync("./data/dataset_stats.json", JSON.stringify(stats, null, 2))
     console.log("📈 Statistics saved to: ./data/dataset_stats.json")
+
+    // Insert matches into Supabase
+    const leagues = ["La Liga", "Premier League", "Bundesliga", "Serie A", "Ligue 1"]
+    const matchesToInsert = matches.map((match) => ({
+      ...match,
+      league: leagues[Math.floor(Math.random() * leagues.length)],
+    }))
+
+    const { data, error } = await supabase.from("matches").insert(matchesToInsert)
+
+    if (error) {
+      console.error("Error inserting generated data:", error)
+      throw new Error(error.message)
+    }
+
+    console.log(`Successfully inserted ${data?.length || 0} mock matches into Supabase.`)
 
     return { matches, stats }
   } catch (error) {

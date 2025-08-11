@@ -1,62 +1,65 @@
 import { createClient } from "@supabase/supabase-js"
+import dotenv from "dotenv"
+import path from "path"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") })
 
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-async function verifyTableExistence() {
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error("Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in .env.local")
+  process.exit(1)
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    persistSession: false,
+  },
+})
+
+async function verifyTableExistence(tableName) {
   try {
-    console.log("🔍 Verifying table existence...")
-    console.log("URL:", supabaseUrl)
-    console.log("Key:", supabaseAnonKey ? "✓ Set" : "✗ Missing")
-
-    // Try to query the matches table
-    const { data, error, count } = await supabase.from("matches").select("*", { count: "exact", head: true })
+    console.log(`Verifying existence of table: ${tableName}`)
+    const { data, error } = await supabase.from(tableName).select("id").limit(1)
 
     if (error) {
-      console.error("❌ Error querying matches table:", error)
-
-      if (error.message.includes("relation") && error.message.includes("does not exist")) {
-        console.log("📋 The 'matches' table does not exist yet.")
-        console.log("💡 Run the following script to create it:")
-        console.log("   scripts/01-create-matches-table.sql")
-      } else if (error.message.includes("permission")) {
-        console.log("🔒 Permission denied. Check your RLS policies.")
-      }
-
-      return false
-    }
-
-    console.log("✅ Matches table exists!")
-    console.log(`📊 Total records: ${count || 0}`)
-
-    // Check table structure
-    const { data: sampleData, error: sampleError } = await supabase.from("matches").select("*").limit(1)
-
-    if (!sampleError && sampleData && sampleData.length > 0) {
-      console.log("📋 Table structure (sample record):")
-      console.log(Object.keys(sampleData[0]))
-    }
-
-    // Check for other tables
-    const tables = ["predictions", "team_stats", "legend_baseline_logs"]
-
-    for (const tableName of tables) {
-      const { error: tableError } = await supabase.from(tableName).select("*", { count: "exact", head: true })
-
-      if (tableError) {
-        console.log(`❌ Table '${tableName}' does not exist`)
+      if (error.code === "42P01") {
+        // PostgreSQL error code for "undefined_table"
+        console.error(`Table '${tableName}' does NOT exist. Error: ${error.message}`)
+        return false
       } else {
-        console.log(`✅ Table '${tableName}' exists`)
+        console.error(`Error checking table '${tableName}':`, error)
+        return false
       }
     }
 
-    return true
-  } catch (error) {
-    console.error("💥 Unexpected error:", error)
+    if (data !== null) {
+      console.log(`Table '${tableName}' exists.`)
+      return true
+    } else {
+      // This case should ideally not be reached if there's no error and data is null
+      console.log(`Table '${tableName}' exists but returned no data on select.`)
+      return true
+    }
+  } catch (err) {
+    console.error(`An unexpected error occurred while verifying table '${tableName}':`, err.message)
     return false
   }
 }
 
-verifyTableExistence()
+// Example usage:
+// verifyTableExistence("matches");
+// verifyTableExistence("predictions");
+// verifyTableExistence("system_logs");
+
+// You can call this function for all tables you expect to exist
+async function runVerification() {
+  console.log("Running table existence verification...")
+  await verifyTableExistence("matches")
+  await verifyTableExistence("predictions")
+  await verifyTableExistence("system_logs")
+  // Add other tables as needed
+}
+
+runVerification()

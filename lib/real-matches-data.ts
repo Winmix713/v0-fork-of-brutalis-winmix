@@ -216,3 +216,19 @@ export async function getLeagueStatistics(league = "spain"): Promise<{
     }
   }
 }
+
+// Fetch real matches with a specified limit
+export async function getRealMatches(limit = 10): Promise<Match[]> {
+  const { data, error } = await supabase
+    .from("matches")
+    .select("*")
+    .order("match_time", { ascending: false })
+    .limit(limit)
+
+  if (error) {
+    console.error("Error fetching real matches:", error)
+    throw new Error(error.message)
+  }
+
+  return data as Match[]
+}

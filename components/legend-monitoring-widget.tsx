@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { AlertTriangle, Activity, Users, Zap, TrendingUp, Bell, Eye, BarChart3 } from "lucide-react"
+import { Separator } from "@/components/ui/separator"
+import { CheckCircle, XCircle, AlertTriangle, Clock, Activity, Users, Zap, TrendingUp, Bell, Eye } from "lucide-react"
 
 interface MonitoringMetrics {
   performance: {
@@ -27,20 +28,74 @@ interface MonitoringMetrics {
   }
 }
 
-interface LegendMonitoringWidgetProps {
-  showDetailed?: boolean
+interface MonitoringData {
+  lastRun: string // ISO string
+  status: "success" | "failure" | "pending"
+  accuracyScore: number // 0-1
+  dataFreshnessHours: number
+  errorCountLast24h: number
 }
 
-export default function LegendMonitoringWidget({ showDetailed = false }: LegendMonitoringWidgetProps) {
+interface LegendMonitoringWidgetProps {
+  showDetailed?: boolean
+  data?: MonitoringData
+}
+
+export default function LegendMonitoringWidget({ showDetailed = false, data }: LegendMonitoringWidgetProps) {
   const [metrics, setMetrics] = useState<MonitoringMetrics | null>(null)
   const [alerts, setAlerts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "success":
+        return "bg-green-500"
+      case "failure":
+        return "bg-red-500"
+      case "pending":
+        return "bg-yellow-500"
+      default:
+        return "bg-gray-500"
+    }
+  }
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "success":
+        return <CheckCircle className="h-5 w-5" />
+      case "failure":
+        return <XCircle className="h-5 w-5" />
+      case "pending":
+        return <AlertTriangle className="h-5 w-5" />
+      default:
+        return <AlertTriangle className="h-5 w-5" />
+    }
+  }
+
+  const getHealthStatus = () => {
+    if (!metrics) return { status: "unknown", color: "bg-gray-500" }
+
+    const avgExecution = metrics.performance.avgExecutionTime
+    const errorRate = metrics.performance.errorRate
+
+    if (avgExecution < 60 && errorRate < 2) {
+      return { status: "excellent", color: "bg-green-500" }
+    } else if (avgExecution < 70 && errorRate < 3) {
+      return { status: "good", color: "bg-blue-500" }
+    } else if (avgExecution < 80 && errorRate < 5) {
+      return { status: "warning", color: "bg-yellow-500" }
+    } else {
+      return { status: "critical", color: "bg-red-500" }
+    }
+  }
+
   useEffect(() => {
-    loadMonitoringData()
-    const interval = setInterval(loadMonitoringData, 30000) // Update every 30 seconds
-    return () => clearInterval(interval)
-  }, [])
+    if (!data) {
+      loadMonitoringData()
+      const interval = setInterval(loadMonitoringData, 30000) // Update every 30 seconds
+      return () => clearInterval(interval)
+    }
+  }, [data])
 
   const loadMonitoringData = async () => {
     try {
@@ -87,24 +142,7 @@ export default function LegendMonitoringWidget({ showDetailed = false }: LegendM
     }
   }
 
-  const getHealthStatus = () => {
-    if (!metrics) return { status: "unknown", color: "bg-gray-500" }
-
-    const avgExecution = metrics.performance.avgExecutionTime
-    const errorRate = metrics.performance.errorRate
-
-    if (avgExecution < 60 && errorRate < 2) {
-      return { status: "excellent", color: "bg-green-500" }
-    } else if (avgExecution < 70 && errorRate < 3) {
-      return { status: "good", color: "bg-blue-500" }
-    } else if (avgExecution < 80 && errorRate < 5) {
-      return { status: "warning", color: "bg-yellow-500" }
-    } else {
-      return { status: "critical", color: "bg-red-500" }
-    }
-  }
-
-  if (loading) {
+  if (loading && !data) {
     return (
       <Card className="rounded-2xl border-0 bg-slate-50/50">
         <CardContent className="p-4">
@@ -117,9 +155,9 @@ export default function LegendMonitoringWidget({ showDetailed = false }: LegendM
     )
   }
 
-  if (!metrics) return null
+  if (!metrics && !data) return null
 
-  const health = getHealthStatus()
+  const health = data ? { status: data.status, color: getStatusColor(data.status) } : getHealthStatus()
 
   if (!showDetailed) {
     // Compact widget
@@ -131,7 +169,19 @@ export default function LegendMonitoringWidget({ showDetailed = false }: LegendM
               <div className={`w-3 h-3 rounded-full ${health.color}`}></div>
               <div>
                 <div className="text-sm font-medium text-slate-800">LEGEND Monitoring</div>
-                <div className="text-xs text-slate-500">{metrics.performance.avgExecutionTime}ms avg</div>
+                {data ? (
+                  <div className="text-xs text-slate-500">
+                    {new Date(data.lastRun).toLocaleString("hu-HU", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-500">{metrics?.performance.avgExecutionTime}ms avg</div>
+                )}
               </div>
             </div>
 
@@ -142,10 +192,17 @@ export default function LegendMonitoringWidget({ showDetailed = false }: LegendM
                   {alerts.length}
                 </Badge>
               )}
-              <Badge variant="outline" className="text-xs">
-                <Activity className="h-3 w-3 mr-1" />
-                {metrics.usage.dailyRequests}
-              </Badge>
+              {data ? (
+                <Badge variant="outline" className="text-xs">
+                  <Clock className="h-3 w-3 mr-1" />
+                  {data.dataFreshnessHours} óra
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="text-xs">
+                  <Activity className="h-3 w-3 mr-1" />
+                  {metrics?.usage.dailyRequests}
+                </Badge>
+              )}
             </div>
           </div>
         </CardContent>
@@ -156,130 +213,162 @@ export default function LegendMonitoringWidget({ showDetailed = false }: LegendM
   // Detailed monitoring dashboard
   return (
     <Card className="rounded-3xl shadow-lg border-0 bg-white/80 backdrop-blur-sm">
-      <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
-              <BarChart3 className="h-5 w-5 text-slate-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-slate-800">LEGEND MODE Monitoring</h3>
-              <p className="text-sm text-slate-600">Enterprise-grade system health</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Badge className={`${health.color} text-white`}>
-              <Activity className="h-3 w-3 mr-1" />
-              {health.status.toUpperCase()}
-            </Badge>
-            {alerts.length > 0 && (
-              <Badge variant="destructive">
-                <AlertTriangle className="h-3 w-3 mr-1" />
-                {alerts.length} Alert{alerts.length !== 1 ? "s" : ""}
-              </Badge>
-            )}
-          </div>
-        </div>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          {getStatusIcon(data ? data.status : health.status)}
+          LEGEND MODE Monitoring
+        </CardTitle>
       </CardHeader>
 
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4 text-sm">
+        {data && (
+          <div className="flex items-center justify-between">
+            <span>Utolsó futás:</span>
+            <span className="font-medium">
+              {new Date(data.lastRun).toLocaleString("hu-HU", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </span>
+          </div>
+        )}
+        {data && (
+          <div className="flex items-center justify-between">
+            <span>Státusz:</span>
+            <span className={`font-medium ${getStatusColor(data.status)}`}>{data.status.toUpperCase()}</span>
+          </div>
+        )}
+        {data && <Separator />}
+        {data && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span>Pontossági pontszám:</span>
+              <span className="font-semibold">{(data.accuracyScore * 100).toFixed(1)}%</span>
+            </div>
+            <Progress value={data.accuracyScore * 100} className="h-2" />
+          </div>
+        )}
+        {data && (
+          <div className="flex items-center justify-between">
+            <span>Adat frissesség:</span>
+            <span className="font-medium flex items-center gap-1">
+              <Clock className="h-4 w-4" />
+              {data.dataFreshnessHours} óra
+            </span>
+          </div>
+        )}
+        {data && (
+          <div className="flex items-center justify-between">
+            <span>Hibák (utolsó 24 óra):</span>
+            <span className="font-medium text-red-500">{data.errorCountLast24h}</span>
+          </div>
+        )}
+
         {/* Performance Metrics */}
-        <div>
-          <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
-            <Zap className="h-4 w-4" />
-            Performance Metrics
-          </h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-slate-50 rounded-xl p-3">
-              <div className="text-xs text-slate-600 mb-1">Avg Execution</div>
-              <div className="text-lg font-bold text-slate-800">{metrics.performance.avgExecutionTime}ms</div>
-              <Progress value={((70 - metrics.performance.avgExecutionTime) / 70) * 100} className="h-1 mt-2" />
-            </div>
-            <div className="bg-slate-50 rounded-xl p-3">
-              <div className="text-xs text-slate-600 mb-1">P95 Execution</div>
-              <div className="text-lg font-bold text-slate-800">{metrics.performance.p95ExecutionTime}ms</div>
-              <Progress value={((90 - metrics.performance.p95ExecutionTime) / 90) * 100} className="h-1 mt-2" />
-            </div>
-            <div className="bg-slate-50 rounded-xl p-3">
-              <div className="text-xs text-slate-600 mb-1">Error Rate</div>
-              <div className="text-lg font-bold text-slate-800">{metrics.performance.errorRate.toFixed(1)}%</div>
-              <Progress value={Math.max(0, ((5 - metrics.performance.errorRate) / 5) * 100)} className="h-1 mt-2" />
-            </div>
-            <div className="bg-slate-50 rounded-xl p-3">
-              <div className="text-xs text-slate-600 mb-1">Cache Hit Rate</div>
-              <div className="text-lg font-bold text-slate-800">{metrics.performance.cacheHitRate}%</div>
-              <Progress value={metrics.performance.cacheHitRate} className="h-1 mt-2" />
+        {!data && (
+          <div>
+            <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+              <Zap className="h-4 w-4" />
+              Performance Metrics
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-slate-50 rounded-xl p-3">
+                <div className="text-xs text-slate-600 mb-1">Avg Execution</div>
+                <div className="text-lg font-bold text-slate-800">{metrics?.performance.avgExecutionTime}ms</div>
+                <Progress value={((70 - metrics?.performance.avgExecutionTime) / 70) * 100} className="h-1 mt-2" />
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3">
+                <div className="text-xs text-slate-600 mb-1">P95 Execution</div>
+                <div className="text-lg font-bold text-slate-800">{metrics?.performance.p95ExecutionTime}ms</div>
+                <Progress value={((90 - metrics?.performance.p95ExecutionTime) / 90) * 100} className="h-1 mt-2" />
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3">
+                <div className="text-xs text-slate-600 mb-1">Error Rate</div>
+                <div className="text-lg font-bold text-slate-800">{metrics?.performance.errorRate.toFixed(1)}%</div>
+                <Progress value={Math.max(0, ((5 - metrics?.performance.errorRate) / 5) * 100)} className="h-1 mt-2" />
+              </div>
+              <div className="bg-slate-50 rounded-xl p-3">
+                <div className="text-xs text-slate-600 mb-1">Cache Hit Rate</div>
+                <div className="text-lg font-bold text-slate-800">{metrics?.performance.cacheHitRate}%</div>
+                <Progress value={metrics?.performance.cacheHitRate} className="h-1 mt-2" />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Usage Metrics */}
-        <div>
-          <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Usage Metrics
-          </h4>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-blue-50 rounded-xl p-3">
-              <div className="text-xs text-blue-600 mb-1">Daily Requests</div>
-              <div className="text-lg font-bold text-blue-800">{metrics.usage.dailyRequests.toLocaleString()}</div>
-            </div>
-            <div className="bg-green-50 rounded-xl p-3">
-              <div className="text-xs text-green-600 mb-1">Team Pairs</div>
-              <div className="text-lg font-bold text-green-800">{metrics.usage.uniqueTeamPairs}</div>
-            </div>
-            <div className="bg-purple-50 rounded-xl p-3">
-              <div className="text-xs text-purple-600 mb-1">A/B Participants</div>
-              <div className="text-lg font-bold text-purple-800">{metrics.usage.abTestParticipants}</div>
-            </div>
-            <div className="bg-orange-50 rounded-xl p-3">
-              <div className="text-xs text-orange-600 mb-1">Alerts Triggered</div>
-              <div className="text-lg font-bold text-orange-800">{metrics.usage.alertsTriggered}</div>
+        {!data && (
+          <div>
+            <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Usage Metrics
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-blue-50 rounded-xl p-3">
+                <div className="text-xs text-blue-600 mb-1">Daily Requests</div>
+                <div className="text-lg font-bold text-blue-800">{metrics?.usage.dailyRequests.toLocaleString()}</div>
+              </div>
+              <div className="bg-green-50 rounded-xl p-3">
+                <div className="text-xs text-green-600 mb-1">Team Pairs</div>
+                <div className="text-lg font-bold text-green-800">{metrics?.usage.uniqueTeamPairs}</div>
+              </div>
+              <div className="bg-purple-50 rounded-xl p-3">
+                <div className="text-xs text-purple-600 mb-1">A/B Participants</div>
+                <div className="text-lg font-bold text-purple-800">{metrics?.usage.abTestParticipants}</div>
+              </div>
+              <div className="bg-orange-50 rounded-xl p-3">
+                <div className="text-xs text-orange-600 mb-1">Alerts Triggered</div>
+                <div className="text-lg font-bold text-orange-800">{metrics?.usage.alertsTriggered}</div>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Quality Metrics */}
-        <div>
-          <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
-            <TrendingUp className="h-4 w-4" />
-            Quality Metrics
-          </h4>
-          <div className="space-y-3">
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-slate-600">Data Consistency</span>
-                <span className="text-sm font-bold text-slate-800">{metrics.quality.dataConsistency}%</span>
+        {!data && (
+          <div>
+            <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Quality Metrics
+            </h4>
+            <div className="space-y-3">
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm text-slate-600">Data Consistency</span>
+                  <span className="text-sm font-bold text-slate-800">{metrics?.quality.dataConsistency}%</span>
+                </div>
+                <Progress value={metrics?.quality.dataConsistency} className="h-2" />
               </div>
-              <Progress value={metrics.quality.dataConsistency} className="h-2" />
-            </div>
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-slate-600">Feature Stability</span>
-                <span className="text-sm font-bold text-slate-800">{metrics.quality.featureStability}%</span>
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm text-slate-600">Feature Stability</span>
+                  <span className="text-sm font-bold text-slate-800">{metrics?.quality.featureStability}%</span>
+                </div>
+                <Progress value={metrics?.quality.featureStability} className="h-2" />
               </div>
-              <Progress value={metrics.quality.featureStability} className="h-2" />
-            </div>
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-slate-600">User Engagement</span>
-                <span className="text-sm font-bold text-slate-800">{metrics.quality.userEngagement}%</span>
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm text-slate-600">User Engagement</span>
+                  <span className="text-sm font-bold text-slate-800">{metrics?.quality.userEngagement}%</span>
+                </div>
+                <Progress value={metrics?.quality.userEngagement} className="h-2" />
               </div>
-              <Progress value={metrics.quality.userEngagement} className="h-2" />
-            </div>
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-slate-600">Prediction Accuracy</span>
-                <span className="text-sm font-bold text-slate-800">{metrics.quality.predictionAccuracy}%</span>
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm text-slate-600">Prediction Accuracy</span>
+                  <span className="text-sm font-bold text-slate-800">{metrics?.quality.predictionAccuracy}%</span>
+                </div>
+                <Progress value={metrics?.quality.predictionAccuracy} className="h-2" />
               </div>
-              <Progress value={metrics.quality.predictionAccuracy} className="h-2" />
             </div>
           </div>
-        </div>
+        )}
 
         {/* Active Alerts */}
-        {alerts.length > 0 && (
+        {!data && alerts.length > 0 && (
           <div>
             <h4 className="font-semibold text-slate-800 mb-3 flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-orange-600" />
@@ -304,15 +393,17 @@ export default function LegendMonitoringWidget({ showDetailed = false }: LegendM
         )}
 
         {/* Status Summary */}
-        <div className="pt-4 border-t border-slate-200">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <div className="flex items-center gap-1">
-              <Eye className="h-3 w-3" />
-              <span>Last updated: {new Date().toLocaleTimeString()}</span>
+        {!data && (
+          <div className="pt-4 border-t border-slate-200">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <div className="flex items-center gap-1">
+                <Eye className="h-3 w-3" />
+                <span>Last updated: {new Date().toLocaleTimeString()}</span>
+              </div>
+              <div>Enterprise Monitoring v1.0</div>
             </div>
-            <div>Enterprise Monitoring v1.0</div>
           </div>
-        </div>
+        )}
       </CardContent>
     </Card>
   )

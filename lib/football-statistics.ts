@@ -1,372 +1,262 @@
-// Futball statisztikai számítások a PHP API logikája alapján
-export interface Match {
-  id: number
-  match_time: string
-  home_team: string
-  away_team: string
-  half_time_home_goals: number
-  half_time_away_goals: number
-  full_time_home_goals: number
-  full_time_away_goals: number
-  created_at: string
-}
-
-export interface TeamAnalysis {
-  home_team: string
-  away_team: string
-  matches_count: number
-  both_teams_scored_percentage: number
-  average_goals: {
-    average_total_goals: number
-    average_home_goals: number
-    average_away_goals: number
-  }
-  home_form_index: number
-  away_form_index: number
-  head_to_head_stats: {
-    home_wins: number
-    away_wins: number
-    draws: number
-    home_win_percentage: number
-    away_win_percentage: number
-    draw_percentage: number
-  }
-}
-
-export interface Prediction {
-  homeExpectedGoals: number
-  awayExpectedGoals: number
-  bothTeamsToScoreProb: number
-  predictedWinner: "home" | "away" | "draw" | "unknown"
-  confidence: number
-  modelPredictions: {
-    randomForest: string
-    poisson: {
-      homeGoals: number
-      awayGoals: number
-    }
-    elo: {
-      homeWinProb: number
-      drawProb: number
-      awayWinProb: number
-    }
-  }
-}
+import type { Match } from "./supabase"
 
 export interface StatisticsResult {
-  total_matches: number
-  team_analysis: TeamAnalysis | null
-  prediction: Prediction | null
-  general_stats: {
-    both_teams_scored_percentage: number
-    average_goals: {
-      average_total_goals: number
-      average_home_goals: number
-      average_away_goals: number
+  totalMatches: number
+  homeWins: number
+  awayWins: number
+  draws: number
+  homeGoals: number
+  awayGoals: number
+  avgHomeGoals: number
+  avgAwayGoals: number
+  totalGoals: number
+  avgTotalGoals: number
+  bttsMatches: number
+  cleanSheetsHome: number
+  cleanSheetsAway: number
+  failedToScoreHome: number
+  failedToScoreAway: number
+  // Team-specific stats
+  teamStats?: {
+    [teamName: string]: {
+      totalMatches: number
+      wins: number
+      draws: number
+      losses: number
+      goalsFor: number
+      goalsAgainst: number
+      avgGoalsFor: number
+      avgGoalsAgainst: number
+      cleanSheets: number
+      failedToScore: number
     }
   }
-}
-
-/**
- * Kiszámítja, hogy a mérkőzések hány százalékában szereztek mindkét csapatok gólt
- */
-export function calculateBothTeamsScoredPercentage(matches: Match[]): number {
-  if (matches.length === 0) return 0
-
-  const bothTeamsScoredCount = matches.reduce((count, match) => {
-    return count + (match.full_time_home_goals > 0 && match.full_time_away_goals > 0 ? 1 : 0)
-  }, 0)
-
-  return Math.round((bothTeamsScoredCount / matches.length) * 100 * 100) / 100
-}
-
-/**
- * Kiszámítja az átlagos gólstatisztikákat
- */
-export function calculateAverageGoals(matches: Match[]) {
-  if (matches.length === 0) {
-    return {
-      average_total_goals: 0,
-      average_home_goals: 0,
-      average_away_goals: 0,
-    }
+  // Head-to-head stats
+  h2hStats?: {
+    team1: string
+    team2: string
+    totalMatches: number
+    team1Wins: number
+    team2Wins: number
+    draws: number
+    team1Goals: number
+    team2Goals: number
+    avgTeam1Goals: number
+    avgTeam2Goals: number
   }
-
-  const goals = matches.reduce(
-    (acc, match) => ({
-      total: acc.total + match.full_time_home_goals + match.full_time_away_goals,
-      home: acc.home + match.full_time_home_goals,
-      away: acc.away + match.full_time_away_goals,
-    }),
-    { total: 0, home: 0, away: 0 },
-  )
-
-  return {
-    average_total_goals: Math.round((goals.total / matches.length) * 100) / 100,
-    average_home_goals: Math.round((goals.home / matches.length) * 100) / 100,
-    average_away_goals: Math.round((goals.away / matches.length) * 100) / 100,
+  // AI Prediction related stats (mocked for now)
+  aiPredictionAccuracy?: {
+    overallAccuracy: number
+    homeWinAccuracy: number
+    drawAccuracy: number
+    awayWinAccuracy: number
   }
 }
 
-/**
- * Kiszámítja a csapat forma indexét az utolsó meccsek alapján
- */
-export function calculateFormIndex(matches: Match[], team: string, recentGames = 5): number {
-  if (!team) return 0
-
-  const teamMatches = matches.filter(
-    (match) =>
-      match.home_team.toLowerCase() === team.toLowerCase() || match.away_team.toLowerCase() === team.toLowerCase(),
-  )
-
-  if (teamMatches.length === 0) return 0
-
-  const recentMatches = teamMatches.slice(0, Math.min(teamMatches.length, recentGames))
-  const points = recentMatches.reduce((sum, match) => {
-    const isHomeTeam = match.home_team.toLowerCase() === team.toLowerCase()
-    const homeScore = match.full_time_home_goals
-    const awayScore = match.full_time_away_goals
-
-    if (isHomeTeam) {
-      if (homeScore > awayScore) return sum + 3
-      if (homeScore === awayScore) return sum + 1
-    } else {
-      if (awayScore > homeScore) return sum + 3
-      if (homeScore === awayScore) return sum + 1
-    }
-
-    return sum
-  }, 0)
-
-  const maxPossiblePoints = recentMatches.length * 3
-  return maxPossiblePoints > 0 ? Math.round((points / maxPossiblePoints) * 100 * 100) / 100 : 0
-}
-
-/**
- * Kiszámítja a head-to-head statisztikákat két csapat között
- */
-export function calculateHeadToHeadStats(matches: Match[]) {
-  if (matches.length === 0) {
-    return {
-      home_wins: 0,
-      away_wins: 0,
-      draws: 0,
-      home_win_percentage: 0,
-      away_win_percentage: 0,
-      draw_percentage: 0,
-    }
-  }
-
-  const stats = matches.reduce(
-    (acc, match) => {
-      const homeScore = match.full_time_home_goals
-      const awayScore = match.full_time_away_goals
-
-      if (homeScore > awayScore) {
-        acc.home_wins++
-      } else if (homeScore < awayScore) {
-        acc.away_wins++
-      } else {
-        acc.draws++
-      }
-      return acc
-    },
-    { home_wins: 0, away_wins: 0, draws: 0 },
-  )
-
-  const totalMatches = matches.length
-
-  return {
-    home_wins: stats.home_wins,
-    away_wins: stats.away_wins,
-    draws: stats.draws,
-    home_win_percentage: Math.round((stats.home_wins / totalMatches) * 100 * 100) / 100,
-    away_win_percentage: Math.round((stats.away_wins / totalMatches) * 100 * 100) / 100,
-    draw_percentage: Math.round((stats.draws / totalMatches) * 100 * 100) / 100,
-  }
-}
-
-/**
- * Kiszámítja egy csapat várható gólszámát
- */
-export function calculateExpectedGoals(team: string, matches: Match[]): number {
-  if (!team || matches.length === 0) return 0
-
-  const teamMatches = matches.filter(
-    (match) =>
-      match.home_team.toLowerCase() === team.toLowerCase() || match.away_team.toLowerCase() === team.toLowerCase(),
-  )
-
-  if (teamMatches.length === 0) return 0
-
-  const totalGoals = teamMatches.reduce((sum, match) => {
-    const isHomeTeam = match.home_team.toLowerCase() === team.toLowerCase()
-    return sum + (isHomeTeam ? match.full_time_home_goals : match.full_time_away_goals)
-  }, 0)
-
-  return Math.round((totalGoals / teamMatches.length) * 100) / 100
-}
-
-/**
- * Kiszámítja annak valószínűségét, hogy mindkét csapat szerez gólt
- */
-export function calculateBothTeamsToScoreProb(matches: Match[]): number {
-  if (matches.length === 0) return 0
-
-  const bothScoredCount = matches.filter(
-    (match) => match.full_time_home_goals > 0 && match.full_time_away_goals > 0,
-  ).length
-
-  return Math.round((bothScoredCount / matches.length) * 100 * 100) / 100
-}
-
-/**
- * Előrejelzi a győztest a korábbi head-to-head meccsek alapján
- */
-export function predictWinner(
-  homeTeam: string,
-  awayTeam: string,
+export function calculateStatistics(
   matches: Match[],
-): { winner: "home" | "away" | "draw" | "unknown"; confidence: number } {
-  if (!homeTeam || !awayTeam || matches.length === 0) {
-    return { winner: "unknown", confidence: 0 }
+  homeTeamFilter?: string,
+  awayTeamFilter?: string,
+): StatisticsResult {
+  let totalMatches = 0
+  let homeWins = 0
+  let awayWins = 0
+  let draws = 0
+  let homeGoals = 0
+  let awayGoals = 0
+  let bttsMatches = 0
+  let cleanSheetsHome = 0
+  let cleanSheetsAway = 0
+  let failedToScoreHome = 0
+  let failedToScoreAway = 0
+
+  const teamStats: {
+    [teamName: string]: {
+      totalMatches: number
+      wins: number
+      draws: number
+      losses: number
+      goalsFor: number
+      goalsAgainst: number
+      cleanSheets: number
+      failedToScore: number
+    }
+  } = {}
+
+  // Initialize team stats
+  const allTeams = new Set<string>()
+  matches.forEach((match) => {
+    allTeams.add(match.home_team)
+    allTeams.add(match.away_team)
+  })
+  Array.from(allTeams).forEach((teamName) => {
+    teamStats[teamName] = {
+      totalMatches: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      goalsFor: 0,
+      goalsAgainst: 0,
+      cleanSheets: 0,
+      failedToScore: 0,
+    }
+  })
+
+  matches.forEach((match) => {
+    totalMatches++
+    homeGoals += match.full_time_home_goals
+    awayGoals += match.full_time_away_goals
+
+    // Overall match outcomes
+    if (match.full_time_home_goals > match.full_time_away_goals) {
+      homeWins++
+    } else if (match.full_time_away_goals > match.full_time_home_goals) {
+      awayWins++
+    } else {
+      draws++
+    }
+
+    // Both Teams To Score (BTTS)
+    if (match.full_time_home_goals > 0 && match.full_time_away_goals > 0) {
+      bttsMatches++
+    }
+
+    // Clean Sheets and Failed to Score
+    if (match.full_time_away_goals === 0) {
+      cleanSheetsHome++
+    }
+    if (match.full_time_home_goals === 0) {
+      cleanSheetsAway++
+    }
+    if (match.full_time_home_goals === 0) {
+      failedToScoreHome++
+    }
+    if (match.full_time_away_goals === 0) {
+      failedToScoreAway++
+    }
+
+    // Team-specific stats
+    // Home team
+    teamStats[match.home_team].totalMatches++
+    teamStats[match.home_team].goalsFor += match.full_time_home_goals
+    teamStats[match.home_team].goalsAgainst += match.full_time_away_goals
+    if (match.full_time_home_goals > match.full_time_away_goals) {
+      teamStats[match.home_team].wins++
+    } else if (match.full_time_home_goals < match.full_time_away_goals) {
+      teamStats[match.home_team].losses++
+    } else {
+      teamStats[match.home_team].draws++
+    }
+    if (match.full_time_away_goals === 0) {
+      teamStats[match.home_team].cleanSheets++
+    }
+    if (match.full_time_home_goals === 0) {
+      teamStats[match.home_team].failedToScore++
+    }
+
+    // Away team
+    teamStats[match.away_team].totalMatches++
+    teamStats[match.away_team].goalsFor += match.full_time_away_goals
+    teamStats[match.away_team].goalsAgainst += match.full_time_home_goals
+    if (match.full_time_away_goals > match.full_time_home_goals) {
+      teamStats[match.away_team].wins++
+    } else if (match.full_time_away_goals < match.full_time_home_goals) {
+      teamStats[match.away_team].losses++
+    } else {
+      teamStats[match.away_team].draws++
+    }
+    if (match.full_time_home_goals === 0) {
+      teamStats[match.away_team].cleanSheets++
+    }
+    if (match.full_time_away_goals === 0) {
+      teamStats[match.away_team].failedToScore++
+    }
+  })
+
+  // Calculate averages for team stats
+  for (const teamName in teamStats) {
+    const stats = teamStats[teamName]
+    stats.avgGoalsFor = stats.totalMatches > 0 ? stats.goalsFor / stats.totalMatches : 0
+    stats.avgGoalsAgainst = stats.totalMatches > 0 ? stats.goalsAgainst / stats.totalMatches : 0
   }
 
-  const h2hMatches = matches.filter(
-    (match) =>
-      match.home_team.toLowerCase() === homeTeam.toLowerCase() &&
-      match.away_team.toLowerCase() === awayTeam.toLowerCase(),
-  )
+  let h2hStats = undefined
+  if (homeTeamFilter && awayTeamFilter) {
+    const h2hMatches = matches.filter(
+      (match) =>
+        (match.home_team === homeTeamFilter && match.away_team === awayTeamFilter) ||
+        (match.home_team === awayTeamFilter && match.away_team === homeTeamFilter),
+    )
 
-  if (h2hMatches.length === 0) {
-    return { winner: "unknown", confidence: 0 }
-  }
+    let team1Wins = 0
+    let team2Wins = 0
+    let h2hDraws = 0
+    let team1Goals = 0
+    let team2Goals = 0
 
-  const stats = h2hMatches.reduce(
-    (acc, match) => {
-      const homeScore = match.full_time_home_goals
-      const awayScore = match.full_time_away_goals
-
-      if (homeScore > awayScore) {
-        acc.home_wins++
-      } else if (homeScore < awayScore) {
-        acc.away_wins++
+    h2hMatches.forEach((match) => {
+      if (match.home_team === homeTeamFilter) {
+        team1Goals += match.full_time_home_goals
+        team2Goals += match.full_time_away_goals
+        if (match.full_time_home_goals > match.full_time_away_goals) {
+          team1Wins++
+        } else if (match.full_time_home_goals < match.full_time_away_goals) {
+          team2Wins++
+        } else {
+          h2hDraws++
+        }
       } else {
-        acc.draws++
+        // awayTeamFilter is home team in this match
+        team1Goals += match.full_time_away_goals
+        team2Goals += match.full_time_home_goals
+        if (match.full_time_away_goals > match.full_time_home_goals) {
+          team1Wins++
+        } else if (match.full_time_away_goals < match.full_time_home_goals) {
+          team2Wins++
+        } else {
+          h2hDraws++
+        }
       }
-      return acc
+    })
+
+    h2hStats = {
+      team1: homeTeamFilter,
+      team2: awayTeamFilter,
+      totalMatches: h2hMatches.length,
+      team1Wins: team1Wins,
+      team2Wins: team2Wins,
+      draws: h2hDraws,
+      team1Goals: team1Goals,
+      team2Goals: team2Goals,
+      avgTeam1Goals: h2hMatches.length > 0 ? team1Goals / h2hMatches.length : 0,
+      avgTeam2Goals: h2hMatches.length > 0 ? team2Goals / h2hMatches.length : 0,
+    }
+  }
+
+  return {
+    totalMatches,
+    homeWins,
+    awayWins,
+    draws,
+    homeGoals,
+    awayGoals,
+    avgHomeGoals: totalMatches > 0 ? homeGoals / totalMatches : 0,
+    avgAwayGoals: totalMatches > 0 ? awayGoals / totalMatches : 0,
+    totalGoals: homeGoals + awayGoals,
+    avgTotalGoals: totalMatches > 0 ? (homeGoals + awayGoals) / totalMatches : 0,
+    bttsMatches,
+    cleanSheetsHome,
+    cleanSheetsAway,
+    failedToScoreHome,
+    failedToScoreAway,
+    teamStats,
+    h2hStats,
+    // Mock AI prediction accuracy for demonstration
+    aiPredictionAccuracy: {
+      overallAccuracy: 0.75,
+      homeWinAccuracy: 0.78,
+      drawAccuracy: 0.65,
+      awayWinAccuracy: 0.72,
     },
-    { home_wins: 0, away_wins: 0, draws: 0 },
-  )
-
-  const totalMatches = h2hMatches.length
-
-  if (stats.home_wins > stats.away_wins && stats.home_wins > stats.draws) {
-    return { winner: "home", confidence: Math.round((stats.home_wins / totalMatches) * 100) / 100 }
-  } else if (stats.away_wins > stats.home_wins && stats.away_wins > stats.draws) {
-    return { winner: "away", confidence: Math.round((stats.away_wins / totalMatches) * 100) / 100 }
-  } else {
-    return { winner: "draw", confidence: Math.round((stats.draws / totalMatches) * 100) / 100 }
-  }
-}
-
-/**
- * Kiszámítja a győzelmi valószínűségeket
- */
-function calculateWinProbability(
-  winnerPrediction: { winner: string; confidence: number },
-  outcomeType: string,
-): number {
-  if (winnerPrediction.winner === "unknown") {
-    return Math.round((1 / 3) * 100) / 100
-  }
-
-  if (winnerPrediction.winner === outcomeType) {
-    return winnerPrediction.confidence
-  }
-
-  const remainingProb = 1 - winnerPrediction.confidence
-  return Math.round((remainingProb / 2) * 100) / 100
-}
-
-/**
- * Futtatja a teljes predikciós elemzést
- */
-export function runPrediction(homeTeam: string, awayTeam: string, matches: Match[]): Prediction {
-  const homeExpectedGoals = calculateExpectedGoals(homeTeam, matches)
-  const awayExpectedGoals = calculateExpectedGoals(awayTeam, matches)
-  const bothTeamsToScoreProb = calculateBothTeamsToScoreProb(matches)
-  const winnerPrediction = predictWinner(homeTeam, awayTeam, matches)
-
-  return {
-    homeExpectedGoals,
-    awayExpectedGoals,
-    bothTeamsToScoreProb,
-    predictedWinner: winnerPrediction.winner,
-    confidence: winnerPrediction.confidence,
-    modelPredictions: {
-      randomForest: winnerPrediction.winner === "unknown" ? "insufficient_data" : `${winnerPrediction.winner}_win`,
-      poisson: {
-        homeGoals: Math.round(homeExpectedGoals),
-        awayGoals: Math.round(awayExpectedGoals),
-      },
-      elo: {
-        homeWinProb: calculateWinProbability(winnerPrediction, "home"),
-        drawProb: calculateWinProbability(winnerPrediction, "draw"),
-        awayWinProb: calculateWinProbability(winnerPrediction, "away"),
-      },
-    },
-  }
-}
-
-/**
- * Kiszámítja a csapat elemzést két csapat között
- */
-export function calculateTeamAnalysis(homeTeam: string, awayTeam: string, allMatches: Match[]): TeamAnalysis | null {
-  if (!homeTeam || !awayTeam) return null
-
-  // Head-to-head meccsek keresése
-  const teamAnalysisMatches = allMatches.filter(
-    (match) =>
-      (match.home_team.toLowerCase() === homeTeam.toLowerCase() &&
-        match.away_team.toLowerCase() === awayTeam.toLowerCase()) ||
-      (match.home_team.toLowerCase() === awayTeam.toLowerCase() &&
-        match.away_team.toLowerCase() === homeTeam.toLowerCase()),
-  )
-
-  return {
-    home_team: homeTeam,
-    away_team: awayTeam,
-    matches_count: teamAnalysisMatches.length,
-    both_teams_scored_percentage: calculateBothTeamsScoredPercentage(teamAnalysisMatches),
-    average_goals: calculateAverageGoals(teamAnalysisMatches),
-    home_form_index: calculateFormIndex(allMatches, homeTeam),
-    away_form_index: calculateFormIndex(allMatches, awayTeam),
-    head_to_head_stats: calculateHeadToHeadStats(teamAnalysisMatches),
-  }
-}
-
-/**
- * Kiszámítja a teljes statisztikai eredményt
- */
-export function calculateStatistics(matches: Match[], homeTeam?: string, awayTeam?: string): StatisticsResult {
-  const generalStats = {
-    both_teams_scored_percentage: calculateBothTeamsScoredPercentage(matches),
-    average_goals: calculateAverageGoals(matches),
-  }
-
-  let teamAnalysis: TeamAnalysis | null = null
-  let prediction: Prediction | null = null
-
-  if (homeTeam && awayTeam) {
-    teamAnalysis = calculateTeamAnalysis(homeTeam, awayTeam, matches)
-    prediction = runPrediction(homeTeam, awayTeam, matches)
-  }
-
-  return {
-    total_matches: matches.length,
-    team_analysis: teamAnalysis,
-    prediction,
-    general_stats: generalStats,
   }
 }

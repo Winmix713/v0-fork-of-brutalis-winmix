@@ -1,6 +1,26 @@
 // LEGEND MODE Comprehensive Test Suite
 // Tests all aspects of the Legend Mode functionality
 
+import { createClient } from "@supabase/supabase-js"
+import dotenv from "dotenv"
+import path from "path"
+
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") })
+
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error("Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in .env.local")
+  process.exit(1)
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    persistSession: false,
+  },
+})
+
 const LEGEND_TEST_SUITE = {
   // Test configuration
   config: {

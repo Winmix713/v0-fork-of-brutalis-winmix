@@ -1,8 +1,26 @@
 import { createClient } from "@supabase/supabase-js"
+import dotenv from "dotenv"
+import path from "path"
+import fetch from "node-fetch"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") })
+
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error("Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in .env.local")
+  process.exit(1)
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    persistSession: false,
+  },
+})
+
+const supabaseClientForQueries = createClient(supabaseUrl, supabaseAnonKey)
 
 // Test configurations
 const BENCHMARK_CONFIG = {
@@ -36,6 +54,9 @@ class PerformanceBenchmark {
 
     // Run scenario-specific tests
     await this.testScenarios()
+
+    // Enhanced prediction test
+    await this.testEnhancedPrediction()
 
     this.endTime = Date.now()
 
@@ -167,9 +188,58 @@ class PerformanceBenchmark {
     this.analyzeScenarioResults(scenario, results)
   }
 
+  async testEnhancedPrediction() {
+    console.log("\n🔮 Running enhanced prediction benchmark...")
+
+    const numQueries = 100
+    const team1 = "Barcelona"
+    const team2 = "Madrid Fehér"
+    const matchDate = "2023-10-28" // Example date
+
+    let totalTime = 0
+    let successfulQueries = 0
+
+    for (let i = 0; i < numQueries; i++) {
+      const startTime = process.hrtime.bigint()
+      try {
+        // Simulate fetching an enhanced prediction
+        const response = await fetch(
+          `${process.env.NEXT_PUBLIC_VERCEL_URL || "http://localhost:3000"}/api/enhanced-prediction?home_team=${encodeURIComponent(
+            team1,
+          )}&away_team=${encodeURIComponent(team2)}&match_date=${matchDate}`,
+        )
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        await response.json() // Parse response to ensure full data transfer
+
+        const endTime = process.hrtime.bigint()
+        const durationMs = Number(endTime - startTime) / 1_000_000 // Convert nanoseconds to milliseconds
+        totalTime += durationMs
+        successfulQueries++
+      } catch (error) {
+        console.error(`Query ${i + 1} failed:`, error.message)
+      }
+    }
+
+    const avgTime = successfulQueries > 0 ? totalTime / successfulQueries : 0
+
+    console.log("\n--- Enhanced Prediction Benchmark Results ---")
+    console.log(`Total queries attempted: ${numQueries}`)
+    console.log(`Successful queries: ${successfulQueries}`)
+    console.log(`Average response time: ${avgTime.toFixed(2)} ms`)
+    console.log("-------------------------------------------")
+
+    this.results.enhancedPrediction = {
+      successfulQueries,
+      avgTime,
+    }
+  }
+
   // Query implementations
   async simpleQuery() {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClientForQueries
       .from("matches")
       .select("id, home_team, away_team, full_time_home_goals, full_time_away_goals")
       .limit(10)
@@ -179,21 +249,21 @@ class PerformanceBenchmark {
   }
 
   async teamStatistics(teamName) {
-    const { data, error } = await supabase.rpc("get_team_stats", { team_name: teamName })
+    const { data, error } = await supabaseClientForQueries.rpc("get_team_stats", { team_name: teamName })
 
     if (error) throw error
     return data
   }
 
   async comebackAnalysis(teamName) {
-    const { data, error } = await supabase.rpc("calculate_comeback_stats", { team_name: teamName })
+    const { data, error } = await supabaseClientForQueries.rpc("calculate_comeback_stats", { team_name: teamName })
 
     if (error) throw error
     return data
   }
 
   async complexAggregation() {
-    const { data, error } = await supabase
+    const { data, error } = await supabaseClientForQueries
       .from("matches")
       .select(`
         home_team,
@@ -210,7 +280,7 @@ class PerformanceBenchmark {
   }
 
   async predictionAccuracy() {
-    const { data, error } = await supabase.rpc("get_prediction_accuracy_stats")
+    const { data, error } = await supabaseClientForQueries.rpc("get_prediction_accuracy_stats")
 
     if (error) throw error
     return data
@@ -318,7 +388,13 @@ class PerformanceBenchmark {
       console.log(`   ${priority}: ${result.scenario} (${result.avgResponseTime.toFixed(2)}ms)`)
     })
 
-    console.log("\n3. General recommendations:")
+    // Analyze enhanced prediction performance
+    const enhancedPredictionResults = this.results.enhancedPrediction
+    console.log("\n3. Enhanced Prediction Performance:")
+    console.log(`   Successful Queries: ${enhancedPredictionResults.successfulQueries}`)
+    console.log(`   Average Response Time: ${enhancedPredictionResults.avgTime.toFixed(2)} ms`)
+
+    console.log("\n4. General recommendations:")
     console.log("   - Consider adding database indexes for slow queries")
     console.log("   - Implement query result caching for frequently accessed data")
     console.log("   - Monitor database connection pool usage")

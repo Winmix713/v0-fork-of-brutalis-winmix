@@ -1,8 +1,22 @@
 import { createClient } from "@supabase/supabase-js"
+import dotenv from "dotenv"
+import path from "path"
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") })
+
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error("Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in .env.local")
+  process.exit(1)
+}
+
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    persistSession: false,
+  },
+})
 
 async function testBatchSQL() {
   console.log("🧪 Testing batch SQL operations...")
@@ -127,6 +141,10 @@ async function testBatchSQL() {
       }
     }
 
+    // Test 9: Batch SQL function
+    console.log("\n🔬 Test 9: Batch SQL function")
+    await testBatchSqlFunction()
+
     console.log("\n🎉 All batch SQL tests completed!")
     return true
   } catch (error) {
@@ -215,6 +233,29 @@ async function runAllTests() {
     console.log(`  Reliability: ${performanceResult.successfulRequests}/50 requests successful`)
   } else {
     console.log("❌ Basic tests failed, skipping performance tests")
+  }
+}
+
+async function testBatchSqlFunction() {
+  try {
+    console.log("Testing calculate_all_features_batch function...")
+
+    // Call the PostgreSQL function using rpc
+    // You might need to pass parameters if your function requires them
+    const { data, error } = await supabase.rpc("calculate_all_features_batch", {
+      // p_start_date: '2023-01-01',
+      // p_end_date: '2023-12-31'
+    })
+
+    if (error) {
+      console.error("Error calling calculate_all_features_batch:", error)
+      throw new Error(error.message)
+    }
+
+    console.log("calculate_all_features_batch executed successfully.")
+    console.log("Result (if any):", data)
+  } catch (err) {
+    console.error("Failed to test batch SQL function:", err.message)
   }
 }
 

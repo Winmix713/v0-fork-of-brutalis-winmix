@@ -1,213 +1,154 @@
-const fs = require("fs")
-const path = require("path")
+import { parse } from "csv-parse/sync"
+import { readFileSync } from "fs"
+import path from "path"
 
-// Configuration
-const CSV_FILE_PATH = path.join(__dirname, "..", "data", "football_matches.csv")
-const OUTPUT_DIR = path.join(__dirname, "..", "analysis")
-
-// Ensure output directory exists
-if (!fs.existsSync(OUTPUT_DIR)) {
-  fs.mkdirSync(OUTPUT_DIR, { recursive: true })
-}
-
-function parseCSVLine(line) {
-  const result = []
-  let current = ""
-  let inQuotes = false
-
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i]
-
-    if (char === '"') {
-      inQuotes = !inQuotes
-    } else if (char === "," && !inQuotes) {
-      result.push(current.trim())
-      current = ""
-    } else {
-      current += char
-    }
-  }
-
-  result.push(current.trim())
-  return result
-}
-
-function analyzeCSV() {
-  console.log("🔍 Starting CSV analysis...")
-
-  if (!fs.existsSync(CSV_FILE_PATH)) {
-    console.error(`❌ CSV file not found: ${CSV_FILE_PATH}`)
-    console.log("📁 Please ensure your CSV file is located at: data/football_matches.csv")
-    return
-  }
-
+async function analyzeCsv(filePath) {
   try {
-    const csvContent = fs.readFileSync(CSV_FILE_PATH, "utf-8")
-    const lines = csvContent.split("\n").filter((line) => line.trim())
+    const csvFilePath = path.resolve(process.cwd(), filePath)
+    console.log(`Analyzing CSV from: ${csvFilePath}`)
 
-    if (lines.length === 0) {
-      console.error("❌ CSV file is empty")
+    const fileContent = readFileSync(csvFilePath, "utf8")
+
+    const records = parse(fileContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    })
+
+    console.log(`Found ${records.length} records.`)
+
+    if (records.length === 0) {
+      console.log("CSV is empty.")
       return
     }
 
-    console.log(`📊 Total lines in CSV: ${lines.length}`)
+    const headers = Object.keys(records[0])
+    console.log("\n--- CSV Headers ---")
+    headers.forEach((header) => console.log(`- ${header}`))
 
-    // Parse header
-    const headers = parseCSVLine(lines[0])
-    console.log(`📋 Number of columns: ${headers.length}`)
-    console.log("📝 Column headers:")
-    headers.forEach((header, index) => {
-      console.log(`  ${index + 1}. "${header}"`)
+    console.log("\n--- Sample Data (First 5 rows) ---")
+    records.slice(0, 5).forEach((record, index) => {
+      console.log(`Row ${index + 1}:`, record)
     })
 
-    // Analyze data rows
-    const dataLines = lines.slice(1)
-    console.log(`📈 Data rows: ${dataLines.length}`)
+    console.log("\n--- Data Types and Uniqueness (Sampled) ---")
+    const analysis = {}
 
-    // Sample data analysis
-    const sampleSize = Math.min(10, dataLines.length)
-    console.log(`\n🔬 Analyzing first ${sampleSize} data rows...`)
-
-    const analysis = {
-      columnStats: {},
-      dataTypes: {},
-      nullCounts: {},
-      uniqueValues: {},
-      sampleData: [],
-    }
-
-    // Initialize analysis objects
     headers.forEach((header) => {
-      analysis.columnStats[header] = { min: null, max: null, avg: null }
-      analysis.dataTypes[header] = new Set()
-      analysis.nullCounts[header] = 0
-      analysis.uniqueValues[header] = new Set()
+      analysis[header] = { type: "unknown", uniqueValues: new Set(), hasNull: false }
     })
 
-    // Analyze sample data
-    for (let i = 0; i < sampleSize && i < dataLines.length; i++) {
-      const row = parseCSVLine(dataLines[i])
-      const rowData = {}
-
-      headers.forEach((header, index) => {
-        const value = row[index] || ""
-        rowData[header] = value
-
-        // Track unique values (limit to prevent memory issues)
-        if (analysis.uniqueValues[header].size < 100) {
-          analysis.uniqueValues[header].add(value)
-        }
-
-        // Count nulls/empty values
-        if (!value || value.trim() === "") {
-          analysis.nullCounts[header]++
-        }
-
-        // Determine data type
-        if (value.trim() !== "") {
-          if (!isNaN(value) && !isNaN(Number.parseFloat(value))) {
-            analysis.dataTypes[header].add("number")
-          } else if (value.match(/^\d{4}-\d{2}-\d{2}$/)) {
-            analysis.dataTypes[header].add("date")
-          } else if (value.match(/^\d{2}:\d{2}$/)) {
-            analysis.dataTypes[header].add("time")
-          } else {
-            analysis.dataTypes[header].add("string")
+    records.forEach((record) => {
+      headers.forEach((header) => {
+        const value = record[header]
+        if (value === null || value === undefined || value === "") {
+          analysis[header].hasNull = true
+        } else {
+          analysis[header].uniqueValues.add(String(value))
+          if (analysis[header].type === "unknown") {
+            if (!isNaN(Number(value)) && !isNaN(Number.parseFloat(value))) {
+              analysis[header].type = "number"
+            } else if (new Date(value).toString() !== "Invalid Date" && !isNaN(new Date(value).getTime())) {
+              analysis[header].type = "date/time"
+            } else {
+              analysis[header].type = "string"
+            }
           }
         }
       })
-
-      analysis.sampleData.push(rowData)
-    }
-
-    // Generate analysis report
-    const report = {
-      summary: {
-        totalRows: dataLines.length,
-        totalColumns: headers.length,
-        fileSize: `${(csvContent.length / 1024).toFixed(2)} KB`,
-        analyzedRows: sampleSize,
-      },
-      columns: headers.map((header) => ({
-        name: header,
-        dataTypes: Array.from(analysis.dataTypes[header]),
-        uniqueValueCount: analysis.uniqueValues[header].size,
-        nullCount: analysis.nullCounts[header],
-        sampleValues: Array.from(analysis.uniqueValues[header]).slice(0, 5),
-      })),
-      sampleData: analysis.sampleData.slice(0, 3),
-    }
-
-    // Save analysis report
-    const reportPath = path.join(OUTPUT_DIR, "csv_analysis_report.json")
-    fs.writeFileSync(reportPath, JSON.stringify(report, null, 2))
-
-    // Display summary
-    console.log("\n📊 ANALYSIS SUMMARY")
-    console.log("===================")
-    console.log(`📁 File size: ${report.summary.fileSize}`)
-    console.log(`📊 Total rows: ${report.summary.totalRows}`)
-    console.log(`📋 Total columns: ${report.summary.totalColumns}`)
-
-    console.log("\n📋 COLUMN ANALYSIS")
-    console.log("==================")
-    report.columns.forEach((col) => {
-      console.log(`\n📝 ${col.name}:`)
-      console.log(`   Data types: ${col.dataTypes.join(", ") || "unknown"}`)
-      console.log(`   Unique values: ${col.uniqueValueCount}`)
-      console.log(`   Null/empty: ${col.nullCount}`)
-      if (col.sampleValues.length > 0) {
-        console.log(`   Sample values: ${col.sampleValues.join(", ")}`)
-      }
     })
 
-    console.log("\n📋 SAMPLE DATA")
-    console.log("==============")
-    report.sampleData.forEach((row, index) => {
-      console.log(`\nRow ${index + 1}:`)
-      Object.entries(row).forEach(([key, value]) => {
-        console.log(`  ${key}: "${value}"`)
-      })
+    headers.forEach((header) => {
+      const colAnalysis = analysis[header]
+      console.log(`\nColumn: '${header}'`)
+      console.log(`  Inferred Type: ${colAnalysis.type}`)
+      console.log(`  Has Null/Empty: ${colAnalysis.hasNull}`)
+      console.log(`  Unique Values (first 10): ${Array.from(colAnalysis.uniqueValues).slice(0, 10).join(", ")}`)
+      console.log(`  Total Unique Values: ${colAnalysis.uniqueValues.size}`)
     })
 
-    console.log(`\n✅ Analysis complete! Report saved to: ${reportPath}`)
-
-    // Generate recommendations
-    console.log("\n💡 RECOMMENDATIONS")
-    console.log("==================")
-
-    const recommendations = []
-
-    // Check for potential issues
-    report.columns.forEach((col) => {
-      if (col.nullCount > 0) {
-        recommendations.push(`⚠️  Column "${col.name}" has ${col.nullCount} null/empty values`)
-      }
-
-      if (col.dataTypes.length > 1) {
-        recommendations.push(`⚠️  Column "${col.name}" has mixed data types: ${col.dataTypes.join(", ")}`)
-      }
-
-      if (col.uniqueValueCount === 1) {
-        recommendations.push(`ℹ️  Column "${col.name}" has only one unique value (might be constant)`)
-      }
-    })
-
-    if (recommendations.length === 0) {
-      console.log("✅ No issues detected in the analyzed sample!")
-    } else {
-      recommendations.forEach((rec) => console.log(rec))
-    }
-
-    console.log("\n🎯 Next steps:")
-    console.log("1. Run scripts/debug-csv-headers.js to examine headers in detail")
-    console.log("2. Run scripts/clean-csv-data.js to clean the data")
-    console.log("3. Run scripts/01-create-matches-table.sql to create the database table")
-  } catch (error) {
-    console.error("❌ Error analyzing CSV:", error.message)
-    console.error("Stack trace:", error.stack)
+    console.log("\n--- Analysis Complete ---")
+  } catch (err) {
+    console.error("Failed to analyze CSV data:", err.message)
   }
 }
 
-// Run analysis
-analyzeCSV()
+// Example usage:
+// Make sure your CSV file is in the project root or specify the correct path
+// analyzeCsv("data/ujak_11.csv"); // Adjust path as needed
+
+// For the purpose of v0 execution, we'll simulate fetching the CSV from the provided URL.
+async function runAnalyzeFromUrl(url) {
+  try {
+    console.log(`Fetching CSV data from URL for analysis: ${url}`)
+    const response = await fetch(url)
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    const csvContent = await response.text()
+
+    const records = parse(csvContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    })
+
+    console.log(`Found ${records.length} records from URL for analysis.`)
+
+    if (records.length === 0) {
+      console.log("CSV is empty.")
+      return
+    }
+
+    const headers = Object.keys(records[0])
+    console.log("\n--- CSV Headers ---")
+    headers.forEach((header) => console.log(`- ${header}`))
+
+    console.log("\n--- Sample Data (First 5 rows) ---")
+    records.slice(0, 5).forEach((record, index) => {
+      console.log(`Row ${index + 1}:`, record)
+    })
+
+    console.log("\n--- Data Types and Uniqueness (Sampled) ---")
+    const analysis = {}
+
+    headers.forEach((header) => {
+      analysis[header] = { type: "unknown", uniqueValues: new Set(), hasNull: false }
+    })
+
+    records.forEach((record) => {
+      headers.forEach((header) => {
+        const value = record[header]
+        if (value === null || value === undefined || value === "") {
+          analysis[header].hasNull = true
+        } else {
+          analysis[header].uniqueValues.add(String(value))
+          if (analysis[header].type === "unknown") {
+            if (!isNaN(Number(value)) && !isNaN(Number.parseFloat(value))) {
+              analysis[header].type = "number"
+            } else if (new Date(value).toString() !== "Invalid Date" && !isNaN(new Date(value).getTime())) {
+              analysis[header].type = "date/time"
+            } else {
+              analysis[header].type = "string"
+            }
+          }
+        }
+      })
+    })
+
+    headers.forEach((header) => {
+      const colAnalysis = analysis[header]
+      console.log(`\nColumn: '${header}'`)
+      console.log(`  Inferred Type: ${colAnalysis.type}`)
+      console.log(`  Has Null/Empty: ${colAnalysis.hasNull}`)
+      console.log(`  Unique Values (first 10): ${Array.from(colAnalysis.uniqueValues).slice(0, 10).join(", ")}`)
+      console.log(`  Total Unique Values: ${colAnalysis.uniqueValues.size}`)
+    })
+
+    console.log("\n--- Analysis Complete ---")
+  } catch (err) {
+    console.error("Failed to analyze CSV data from URL:", err.message)
+  }
+}
+
+runAnalyzeFromUrl("https://hebbkx1anhila5yf.public.blob.vercel-storage.com/ujak_11-oJ2ZxC4pxxk6lFP8KcD2qGtbzg6UPI.csv")

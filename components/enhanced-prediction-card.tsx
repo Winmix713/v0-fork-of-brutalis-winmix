@@ -2,80 +2,72 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Progress } from "@/components/ui/progress"
 import { Slider } from "@/components/ui/slider"
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-import { AlertTriangle, BarChart3, TrendingUp, Users, RefreshCw, Info } from "lucide-react"
-import { useEnsembleWeight, calculateModelDisagreement, getDisagreementLevel } from "@/hooks/use-ensemble-weight"
-import { formatMatchDate } from "@/lib/date-utils"
+import { Label } from "@/components/ui/label"
+import { Button } from "@/components/ui/button"
+import { Loader2, RefreshCw, Info } from "lucide-react"
+import type { StatisticsResult } from "@/lib/football-statistics"
+import { useEnsembleWeight } from "@/hooks/use-ensemble-weight"
 
-interface PredictionCardProps {
+interface EnhancedPredictionCardProps {
   homeTeam: string
   awayTeam: string
-  matchDate?: string
-  className?: string
+  statistics: StatisticsResult | null
 }
 
-interface PredictionResponse {
+interface PredictionData {
+  home_win_probability: number
+  draw_probability: number
+  away_win_probability: number
+  predicted_home_goals: number
+  predicted_away_goals: number
+  predicted_total_goals: number
+  confidence_score: number
   model_version: string
-  features: {
-    home: any
-    away: any
-    h2h_summary: any
-  }
-  predictions: {
-    form: any
-    h2h: any
-    ensemble: any
-  }
-  confidence: number
-  meta: {
-    home_team: string
-    away_team: string
-    match_date: string
-    generated_at: string
-    cache_hit: boolean
-    generation_time_ms: number
-    data_quality: {
-      home_matches: number
-      away_matches: number
-      h2h_matches: number
-    }
-  }
+  prediction_type: string
+  league: string
+  comeback_probability_home?: number
+  comeback_probability_away?: number
+  resilience_factor_home?: number
+  resilience_factor_away?: number
+  mental_strength_home?: number
+  mental_strength_away?: number
+  legend_mode_features?: any // JSONB type
 }
 
-export default function EnhancedPredictionCard({ homeTeam, awayTeam, matchDate, className = "" }: PredictionCardProps) {
-  const [prediction, setPrediction] = useState<PredictionResponse | null>(null)
+export default function EnhancedPredictionCard({ homeTeam, awayTeam, statistics }: EnhancedPredictionCardProps) {
+  const [prediction, setPrediction] = useState<PredictionData | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedModel, setSelectedModel] = useState<"form" | "h2h" | "ensemble">("ensemble")
-
-  const { weights, updateFormWeight, blendPredictions, getWeightDescription, getConfidenceAdjustment, isDefault } =
-    useEnsembleWeight()
+  const { weight, setWeight } = useEnsembleWeight(0.5) // Ensemble weight for blending models
 
   const fetchPrediction = async () => {
     setLoading(true)
     setError(null)
+    setPrediction(null) // Clear previous prediction
 
     try {
-      const params = new URLSearchParams({
-        home_team: homeTeam,
-        away_team: awayTeam,
-        ...(matchDate && { match_date: matchDate }),
-      })
+      // Construct a mock match date for the API call (e.g., today's date)
+      const today = new Date()
+      const matchDate = today.toISOString().split("T")[0] // YYYY-MM-DD
 
-      const response = await fetch(`/api/enhanced-prediction?${params}`)
+      const response = await fetch(
+        `/api/enhanced-prediction?home_team=${encodeURIComponent(homeTeam)}&away_team=${encodeURIComponent(
+          awayTeam,
+        )}&match_date=${matchDate}`,
+      )
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        const errorData = await response.json()
+        throw new Error(errorData.error || "Failed to fetch prediction.")
       }
 
-      const data = await response.json()
+      const data: PredictionData = await response.json()
       setPrediction(data)
-    } catch (err) {
-      console.error("Prediction fetch error:", err)
-      setError(err instanceof Error ? err.message : "Ismeretlen hiba történt")
+    } catch (err: any) {
+      setError(err.message || "Ismeretlen hiba történt az előrejelzés lekérésekor.")
+      console.error("Error fetching prediction:", err)
     } finally {
       setLoading(false)
     }
@@ -85,274 +77,119 @@ export default function EnhancedPredictionCard({ homeTeam, awayTeam, matchDate, 
     if (homeTeam && awayTeam) {
       fetchPrediction()
     }
-  }, [homeTeam, awayTeam, matchDate])
+  }, [homeTeam, awayTeam])
 
-  // Calculate real-time ensemble prediction based on slider
-  const realtimeEnsemble = prediction ? blendPredictions(prediction.predictions.form, prediction.predictions.h2h) : null
-
-  // Calculate model disagreement
-  const disagreement = prediction
-    ? calculateModelDisagreement(prediction.predictions.form, prediction.predictions.h2h)
+  // Mock blending logic for ensemble slider
+  const blendedHomeWin = prediction
+    ? prediction.home_win_probability * weight +
+      ((statistics?.homeWins || 0) / (statistics?.totalMatches || 1)) * (1 - weight)
+    : 0
+  const blendedAwayWin = prediction
+    ? prediction.away_win_probability * weight +
+      ((statistics?.awayWins || 0) / (statistics?.totalMatches || 1)) * (1 - weight)
+    : 0
+  const blendedDraw = prediction
+    ? prediction.draw_probability * weight + ((statistics?.draws || 0) / (statistics?.totalMatches || 1)) * (1 - weight)
     : 0
 
-  const disagreementInfo = getDisagreementLevel(disagreement)
-
-  if (loading) {
-    return (
-      <Card className={`w-full ${className}`}>
-        <CardContent className="p-6">
-          <div className="flex items-center justify-center space-x-2">
-            <RefreshCw className="h-4 w-4 animate-spin" />
-            <span>Predikció betöltése...</span>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (error) {
-    return (
-      <Card className={`w-full border-red-200 ${className}`}>
-        <CardContent className="p-6">
-          <div className="text-center space-y-4">
-            <AlertTriangle className="h-8 w-8 text-red-500 mx-auto" />
-            <div>
-              <h3 className="font-semibold text-red-700">Hiba történt</h3>
-              <p className="text-sm text-red-600 mt-1">{error}</p>
-            </div>
-            <Button onClick={fetchPrediction} variant="outline" size="sm">
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Újrapróbálás
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  if (!prediction) {
-    return (
-      <Card className={`w-full ${className}`}>
-        <CardContent className="p-6">
-          <div className="text-center text-gray-500">Nincs elérhető predikció</div>
-        </CardContent>
-      </Card>
-    )
-  }
-
-  const currentPrediction =
-    selectedModel === "ensemble"
-      ? realtimeEnsemble || prediction.predictions.ensemble
-      : prediction.predictions[selectedModel]
-
-  const adjustedConfidence = prediction.confidence + getConfidenceAdjustment()
+  const totalBlended = blendedHomeWin + blendedAwayWin + blendedDraw
+  const normalizedBlendedHomeWin = totalBlended > 0 ? blendedHomeWin / totalBlended : 0
+  const normalizedBlendedAwayWin = totalBlended > 0 ? blendedAwayWin / totalBlended : 0
+  const normalizedBlendedDraw = totalBlended > 0 ? blendedDraw / totalBlended : 0
 
   return (
-    <TooltipProvider>
-      <Card className={`w-full ${className}`}>
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">
-              {homeTeam} vs {awayTeam}
-            </CardTitle>
-            <div className="flex items-center space-x-2">
-              {/* Cache indicator */}
-              <Badge variant={prediction.meta.cache_hit ? "secondary" : "outline"}>
-                {prediction.meta.cache_hit ? "Cache" : "Friss"}
-              </Badge>
-
-              {/* Model disagreement warning */}
-              {disagreementInfo.level === "high" && (
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Badge variant="destructive" className="cursor-help">
-                      <AlertTriangle className="h-3 w-3 mr-1" />
-                      Konfliktus
-                    </Badge>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{disagreementInfo.description}</p>
-                    <p className="text-xs mt-1">Eltérés: {Math.round(disagreement * 100)}%</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
+    <Card className="rounded-3xl shadow-lg border-0 bg-white/80 backdrop-blur-sm">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-2xl font-bold">Továbbfejlesztett Predikció</CardTitle>
+        <Button onClick={fetchPrediction} disabled={loading} variant="ghost" size="icon">
+          {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <RefreshCw className="h-5 w-5" />}
+        </Button>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {loading && (
+          <div className="flex items-center justify-center p-8">
+            <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+            <span className="ml-3 text-gray-600">Előrejelzés generálása...</span>
           </div>
+        )}
 
-          {matchDate && <p className="text-sm text-gray-600">{formatMatchDate(matchDate)}</p>}
-        </CardHeader>
-
-        <CardContent className="space-y-6">
-          {/* Model Selection */}
-          <div className="flex space-x-2">
-            <Button
-              variant={selectedModel === "form" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedModel("form")}
-              className="flex-1"
-            >
-              <TrendingUp className="h-4 w-4 mr-1" />
-              Forma
-            </Button>
-            <Button
-              variant={selectedModel === "h2h" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedModel("h2h")}
-              className="flex-1"
-            >
-              <Users className="h-4 w-4 mr-1" />
-              H2H
-            </Button>
-            <Button
-              variant={selectedModel === "ensemble" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setSelectedModel("ensemble")}
-              className="flex-1"
-            >
-              <BarChart3 className="h-4 w-4 mr-1" />
-              Ensemble
-            </Button>
+        {error && (
+          <div className="text-red-600 text-center p-4">
+            <p className="font-semibold">Hiba:</p>
+            <p>{error}</p>
           </div>
+        )}
 
-          {/* Ensemble Weight Slider */}
-          {selectedModel === "ensemble" && (
-            <div className="space-y-3 p-4 bg-gray-50 rounded-lg">
-              <div className="flex items-center justify-between">
-                <label className="text-sm font-medium">Ensemble súlyozás</label>
-                <Tooltip>
-                  <TooltipTrigger>
-                    <Info className="h-4 w-4 text-gray-400" />
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Állítsd be, hogy mennyire bízz a forma vs H2H modellekben</p>
-                  </TooltipContent>
-                </Tooltip>
+        {prediction && !loading && !error && (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-center">
+              <div>
+                <Label className="text-sm font-medium">Hazai győzelem</Label>
+                <div className="text-3xl font-bold text-blue-600">{(normalizedBlendedHomeWin * 100).toFixed(1)}%</div>
+                <Progress value={normalizedBlendedHomeWin * 100} className="h-2" />
               </div>
+              <div>
+                <Label className="text-sm font-medium">Döntetlen</Label>
+                <div className="text-3xl font-bold text-yellow-600">{(normalizedBlendedDraw * 100).toFixed(1)}%</div>
+                <Progress value={normalizedBlendedDraw * 100} className="h-2" />
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Vendég győzelem</Label>
+                <div className="text-3xl font-bold text-green-600">{(normalizedBlendedAwayWin * 100).toFixed(1)}%</div>
+                <Progress value={normalizedBlendedAwayWin * 100} className="h-2" />
+              </div>
+            </div>
 
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="ensemble-slider" className="text-sm font-medium">
+                  Ensemble súlyozás (AI vs. Statisztika)
+                </Label>
+                <span className="text-sm text-gray-600">
+                  AI: {(weight * 100).toFixed(0)}% | Statisztika: {((1 - weight) * 100).toFixed(0)}%
+                </span>
+              </div>
               <Slider
-                value={[weights.form]}
-                onValueChange={([value]) => updateFormWeight(value)}
-                max={1}
+                id="ensemble-slider"
                 min={0}
-                step={0.05}
+                max={1}
+                step={0.01}
+                value={[weight]}
+                onValueChange={setWeight}
                 className="w-full"
               />
-
-              <div className="flex justify-between text-xs text-gray-600">
-                <span>H2H ({Math.round(weights.h2h * 100)}%)</span>
-                <span className="font-medium">{getWeightDescription()}</span>
-                <span>Forma ({Math.round(weights.form * 100)}%)</span>
-              </div>
-
-              {!isDefault && (
-                <Button variant="ghost" size="sm" onClick={() => updateFormWeight(0.6)} className="w-full text-xs">
-                  Alapértelmezett visszaállítása
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* Main Predictions */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">{Math.round(currentPrediction.home * 100)}%</div>
-              <div className="text-sm text-gray-600">{homeTeam}</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-600">{Math.round(currentPrediction.draw * 100)}%</div>
-              <div className="text-sm text-gray-600">Döntetlen</div>
-            </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-red-600">{Math.round(currentPrediction.away * 100)}%</div>
-              <div className="text-sm text-gray-600">{awayTeam}</div>
-            </div>
-          </div>
-
-          {/* Additional Predictions */}
-          <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-            <div className="text-center">
-              <div className="text-lg font-semibold">{Math.round(currentPrediction.btts * 100)}%</div>
-              <div className="text-sm text-gray-600">BTTS</div>
-            </div>
-            <div className="text-center">
-              <div className="text-lg font-semibold">{Math.round(currentPrediction.over_25 * 100)}%</div>
-              <div className="text-sm text-gray-600">Over 2.5</div>
-            </div>
-          </div>
-
-          {/* Expected Goals */}
-          {currentPrediction.expected_goals && (
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-              <div className="text-center">
-                <div className="text-lg font-semibold text-blue-600">
-                  {currentPrediction.expected_goals.home.toFixed(1)}
-                </div>
-                <div className="text-sm text-gray-600">xG {homeTeam}</div>
-              </div>
-              <div className="text-center">
-                <div className="text-lg font-semibold text-red-600">
-                  {currentPrediction.expected_goals.away.toFixed(1)}
-                </div>
-                <div className="text-sm text-gray-600">xG {awayTeam}</div>
+              <div className="text-xs text-gray-500 flex items-center gap-1">
+                <Info className="h-3 w-3" />
+                <span>
+                  Állítsd be, mennyire befolyásolja az AI modell és a történelmi statisztikák az előrejelzést.
+                </span>
               </div>
             </div>
-          )}
 
-          {/* Confidence and Quality Indicators */}
-          <div className="flex items-center justify-between pt-4 border-t text-sm">
-            <div className="flex items-center space-x-4">
-              <Tooltip>
-                <TooltipTrigger>
-                  <Badge variant="outline">Megbízhatóság: {Math.round(adjustedConfidence * 100)}%</Badge>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>Modell megbízhatósága a rendelkezésre álló adatok alapján</p>
-                </TooltipContent>
-              </Tooltip>
-
-              <Tooltip>
-                <TooltipTrigger>
-                  <Badge variant="secondary">
-                    {prediction.meta.data_quality.home_matches + prediction.meta.data_quality.away_matches} meccs
-                  </Badge>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <div className="space-y-1">
-                    <p>
-                      {homeTeam}: {prediction.meta.data_quality.home_matches} meccs
-                    </p>
-                    <p>
-                      {awayTeam}: {prediction.meta.data_quality.away_matches} meccs
-                    </p>
-                    <p>H2H: {prediction.meta.data_quality.h2h_matches} meccs</p>
-                  </div>
-                </TooltipContent>
-              </Tooltip>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <Label className="text-sm font-medium">Prediktált hazai gólok</Label>
+                <div className="text-xl font-bold">{prediction.predicted_home_goals}</div>
+              </div>
+              <div>
+                <Label className="text-sm font-medium">Prediktált vendég gólok</Label>
+                <div className="text-xl font-bold">{prediction.predicted_away_goals}</div>
+              </div>
+              <div className="col-span-2">
+                <Label className="text-sm font-medium">Prediktált összes gól</Label>
+                <div className="text-xl font-bold">{prediction.predicted_total_goals}</div>
+              </div>
             </div>
 
             <div className="text-xs text-gray-500">
-              {prediction.meta.generation_time_ms}ms • {prediction.model_version}
-            </div>
-          </div>
-
-          {/* Model Disagreement Warning */}
-          {disagreementInfo.level !== "low" && (
-            <div
-              className={`p-3 rounded-lg border ${
-                disagreementInfo.level === "high" ? "bg-red-50 border-red-200" : "bg-yellow-50 border-yellow-200"
-              }`}
-            >
-              <div className="flex items-center space-x-2">
-                <AlertTriangle className={`h-4 w-4 ${disagreementInfo.color}`} />
-                <span className={`text-sm font-medium ${disagreementInfo.color}`}>{disagreementInfo.description}</span>
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                A forma és H2H modellek jelentősen eltérő eredményeket adnak. Érdemes óvatosan kezelni ezt a predikciót.
+              <p>
+                Modell verzió: {prediction.model_version} | Típus: {prediction.prediction_type}
               </p>
+              <p>Konfidencia pontszám: {(prediction.confidence_score * 100).toFixed(2)}%</p>
             </div>
-          )}
-        </CardContent>
-      </Card>
-    </TooltipProvider>
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }

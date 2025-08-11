@@ -1,109 +1,61 @@
-import fs from "fs"
-import https from "https"
+import { createClient } from "@supabase/supabase-js"
+import { parse } from "csv-parse/sync"
+import dotenv from "dotenv"
+import path from "path"
 
-const CSV_URL = "https://raw.githubusercontent.com/your-repo/football-data/main/matches.csv"
-const LOCAL_PATH = "./data/football_matches.csv"
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") })
 
-async function fetchCSVData() {
-  console.log("🌐 Fetching CSV data from remote source...")
+const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-  // Create data directory if it doesn't exist
-  if (!fs.existsSync("./data")) {
-    fs.mkdirSync("./data", { recursive: true })
-    console.log("📁 Created data directory")
-  }
+if (!supabaseUrl || !supabaseServiceRoleKey) {
+  console.error("Error: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY is not set in .env.local")
+  process.exit(1)
+}
 
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    persistSession: false,
+  },
+})
+
+async function fetchAndProcessCsv(csvUrl) {
   try {
-    // For demo purposes, we'll create a sample CSV file
-    // In a real scenario, you would fetch from an actual URL
-    const sampleCSVData = `Match Time,Home Team,Away Team,HT Home Goals,HT Away Goals,FT Home Goals,FT Away Goals
-2024-01-15T15:00:00Z,Barcelona,Real Madrid,1,0,2,1
-2024-01-14T18:30:00Z,Valencia,Sevilla,0,1,1,1
-2024-01-13T20:00:00Z,Bilbao,Villarreal,2,0,3,1
-2024-01-12T16:15:00Z,Las Palmas,Getafe,0,0,0,2
-2024-01-11T19:45:00Z,Girona,Alaves,1,1,2,2
-2024-01-10T17:30:00Z,Mallorca,Osasuna,1,0,1,0
-2024-01-09T21:00:00Z,San Sebastian,Vigo,2,1,3,2
-2024-01-08T16:00:00Z,Real Madrid,Valencia,0,1,2,1
-2024-01-07T19:15:00Z,Sevilla,Barcelona,1,2,1,3
-2024-01-06T18:45:00Z,Villarreal,Bilbao,0,0,1,2
-2024-01-05T20:30:00Z,Getafe,Las Palmas,1,0,2,1
-2024-01-04T15:30:00Z,Alaves,Girona,0,1,1,3
-2024-01-03T17:00:00Z,Osasuna,Mallorca,2,0,2,0
-2024-01-02T19:30:00Z,Vigo,San Sebastian,1,1,1,1
-2024-01-01T16:30:00Z,Barcelona,Valencia,3,0,4,1`
+    console.log(`Fetching CSV from: ${csvUrl}`)
+    const response = await fetch(csvUrl)
 
-    // Write sample data to file
-    fs.writeFileSync(LOCAL_PATH, sampleCSVData)
-    console.log(`✅ Sample CSV data created at: ${LOCAL_PATH}`)
-
-    // Analyze the created file
-    const stats = fs.statSync(LOCAL_PATH)
-    console.log(`📊 File size: ${stats.size} bytes`)
-
-    // Count lines
-    const content = fs.readFileSync(LOCAL_PATH, "utf8")
-    const lines = content.split("\n").length - 1 // Subtract 1 for header
-    console.log(`📋 Records: ${lines} matches`)
-
-    return {
-      success: true,
-      filePath: LOCAL_PATH,
-      fileSize: stats.size,
-      recordCount: lines,
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
+
+    const csvContent = await response.text()
+    console.log("CSV content fetched successfully.")
+
+    const records = parse(csvContent, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    })
+
+    console.log(`Parsed ${records.length} records.`)
+
+    // Example: Process records (e.g., log them, transform them, insert into DB)
+    for (const record of records) {
+      console.log(record) // Log each record
+      // Here you would typically insert into your database
+      // For example:
+      // await supabase.from('your_table').insert(record);
+    }
+
+    console.log("CSV data fetched and processed successfully.")
   } catch (error) {
-    console.error("❌ Error fetching CSV data:", error)
-    throw error
+    console.error("Failed to fetch or process CSV data:", error.message)
   }
 }
 
-// Alternative function to fetch from actual URL
-async function fetchFromURL(url, localPath) {
-  console.log(`🌐 Downloading from: ${url}`)
+// Example usage:
+// Replace with your actual CSV URL
+// fetchAndProcessCsv("https://example.com/your-data.csv");
 
-  return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(localPath)
-
-    https
-      .get(url, (response) => {
-        if (response.statusCode !== 200) {
-          reject(new Error(`HTTP ${response.statusCode}: ${response.statusMessage}`))
-          return
-        }
-
-        response.pipe(file)
-
-        file.on("finish", () => {
-          file.close()
-          console.log(`✅ Downloaded to: ${localPath}`)
-          resolve(localPath)
-        })
-
-        file.on("error", (error) => {
-          fs.unlink(localPath, () => {}) // Delete partial file
-          reject(error)
-        })
-      })
-      .on("error", (error) => {
-        reject(error)
-      })
-  })
-}
-
-// Run the fetch
-fetchCSVData()
-  .then((result) => {
-    console.log("🎉 CSV fetch completed successfully!")
-    console.log("📁 File location:", result.filePath)
-    console.log("📊 File size:", result.fileSize, "bytes")
-    console.log("📋 Records:", result.recordCount)
-    console.log("\n💡 Next steps:")
-    console.log("1. Run analyze-csv.js to examine the data structure")
-    console.log("2. Run clean-csv-data.js to clean and validate the data")
-    console.log("3. Run import-csv-data.js to import into the database")
-  })
-  .catch((error) => {
-    console.error("💥 Failed to fetch CSV data:", error)
-    process.exit(1)
-  })
+// Using the URL provided by the user
+fetchAndProcessCsv("https://hebbkx1anhila5yf.public.blob.vercel-storage.com/ujak_11-oJ2ZxC4pxxk6lFP8KcD2qGtbzg6UPI.csv")

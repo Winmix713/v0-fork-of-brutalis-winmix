@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
-import { Brain, Target, Zap, AlertCircle, CheckCircle2, Clock, Trophy, Activity } from "lucide-react"
+import { Separator } from "@/components/ui/separator"
+import { Brain, XCircle } from "lucide-react"
 import { getRealMatchesData } from "@/lib/real-matches-data"
 import { calculateStatistics } from "@/lib/football-statistics"
 import type { Match } from "@/lib/supabase"
@@ -30,18 +30,35 @@ interface PredictionResult {
 interface PredictionCardProps {
   homeTeam: string
   awayTeam: string
+  homeWinProbability?: number
+  drawProbability?: number
+  awayWinProbability?: number
+  predictedHomeGoals?: number
+  predictedAwayGoals?: number
+  confidenceScore?: number
+  modelVersion?: string
 }
 
-export default function PredictionCard({ homeTeam, awayTeam }: PredictionCardProps) {
+export default function PredictionCard({
+  homeTeam,
+  awayTeam,
+  homeWinProbability: propHomeWinProbability,
+  drawProbability: propDrawProbability,
+  awayWinProbability: propAwayWinProbability,
+  predictedHomeGoals: propPredictedHomeGoals,
+  predictedAwayGoals: propPredictedAwayGoals,
+  confidenceScore: propConfidenceScore,
+  modelVersion: propModelVersion,
+}: PredictionCardProps) {
   const [prediction, setPrediction] = useState<PredictionResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (homeTeam && awayTeam) {
+    if (homeTeam && awayTeam && (!propHomeWinProbability || !propDrawProbability || !propAwayWinProbability)) {
       calculateRealPrediction()
     }
-  }, [homeTeam, awayTeam])
+  }, [homeTeam, awayTeam, propHomeWinProbability, propDrawProbability, propAwayWinProbability])
 
   const calculateRealPrediction = async () => {
     setLoading(true)
@@ -260,7 +277,7 @@ export default function PredictionCard({ homeTeam, awayTeam }: PredictionCardPro
         <CardContent className="p-8">
           <div className="text-center">
             <div className="w-12 h-12 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-              <AlertCircle className="h-6 w-6 text-red-600" />
+              <XCircle className="h-6 w-6 text-red-600" />
             </div>
             <h3 className="text-lg font-semibold text-red-800 mb-2">Predikció hiba</h3>
             <p className="text-red-600 text-sm">{error}</p>
@@ -270,160 +287,59 @@ export default function PredictionCard({ homeTeam, awayTeam }: PredictionCardPro
     )
   }
 
-  if (!prediction) {
-    return null
-  }
+  const homeWinProbability = propHomeWinProbability ?? prediction?.homeWinProbability ?? 0
+  const drawProbability = propDrawProbability ?? prediction?.drawProbability ?? 0
+  const awayWinProbability = propAwayWinProbability ?? prediction?.awayWinProbability ?? 0
+  const predictedHomeGoals = propPredictedHomeGoals ?? prediction?.expectedGoals.home ?? 0
+  const predictedAwayGoals = propPredictedAwayGoals ?? prediction?.expectedGoals.away ?? 0
+  const confidenceScore = propConfidenceScore ?? prediction?.confidence ?? 0
+  const modelVersion = propModelVersion ?? "1.0"
 
   return (
-    <Card className="rounded-3xl shadow-sm border-0 bg-white/80 backdrop-blur-sm">
-      <CardHeader className="pb-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
-              <Brain className="h-5 w-5 text-orange-600" />
-            </div>
-            <div>
-              <h3 className="text-lg font-semibold text-slate-800">AI Predikciók</h3>
-              <p className="text-sm text-slate-600">Valós adatok alapján számítva</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Badge variant="secondary" className={`${getConfidenceColor(prediction.confidence)} text-white`}>
-              <CheckCircle2 className="h-3 w-3 mr-1" />
-              {getConfidenceText(prediction.confidence)} ({Math.round(prediction.confidence * 100)}%)
-            </Badge>
-          </div>
-        </div>
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Brain className="h-5 w-5" />
+          Predikció: {homeTeam} vs {awayTeam}
+        </CardTitle>
       </CardHeader>
-
       <CardContent className="space-y-6">
-        {/* Adatminőség */}
-        <div className="bg-blue-50 rounded-2xl p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Activity className="h-4 w-4 text-blue-600" />
-            <span className="text-sm font-medium text-blue-700">Adatminőség</span>
+        <div className="grid grid-cols-3 gap-4 text-center">
+          <div>
+            <p className="text-sm font-medium">Hazai győzelem</p>
+            <p className="text-2xl font-bold text-blue-600">{(homeWinProbability * 100).toFixed(1)}%</p>
+            <Progress value={homeWinProbability * 100} className="h-2" />
           </div>
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <div className="text-blue-600">Összes meccs</div>
-              <div className="font-bold text-blue-800">{prediction.dataQuality.totalMatches}</div>
-            </div>
-            <div>
-              <div className="text-blue-600">H2H meccsek</div>
-              <div className="font-bold text-blue-800">{prediction.dataQuality.h2hMatches}</div>
-            </div>
-            <div>
-              <div className="text-blue-600">Legutóbbi</div>
-              <div className="font-bold text-blue-800">{prediction.dataQuality.recentMatches}</div>
-            </div>
+          <div>
+            <p className="text-sm font-medium">Döntetlen</p>
+            <p className="text-2xl font-bold text-yellow-600">{(drawProbability * 100).toFixed(1)}%</p>
+            <Progress value={drawProbability * 100} className="h-2" />
+          </div>
+          <div>
+            <p className="text-sm font-medium">Vendég győzelem</p>
+            <p className="text-2xl font-bold text-green-600">{(awayWinProbability * 100).toFixed(1)}%</p>
+            <Progress value={awayWinProbability * 100} className="h-2" />
           </div>
         </div>
 
-        {/* Mérkőzés kimenetel valószínűségek */}
-        <div>
-          <h4 className="font-semibold text-slate-800 mb-4 flex items-center gap-2">
-            <Trophy className="h-4 w-4" />
-            Mérkőzés kimenetel
-          </h4>
+        <Separator />
 
-          <div className="space-y-3">
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium text-green-700">Hazai győzelem</span>
-                <span className="text-sm font-bold text-green-800">
-                  {Math.round(prediction.homeWinProbability * 100)}%
-                </span>
-              </div>
-              <Progress value={prediction.homeWinProbability * 100} className="h-3 bg-slate-200">
-                <div
-                  className="h-full bg-green-500 rounded-full transition-all"
-                  style={{ width: `${prediction.homeWinProbability * 100}%` }}
-                />
-              </Progress>
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium text-slate-700">Döntetlen</span>
-                <span className="text-sm font-bold text-slate-800">
-                  {Math.round(prediction.drawProbability * 100)}%
-                </span>
-              </div>
-              <Progress value={prediction.drawProbability * 100} className="h-3 bg-slate-200">
-                <div
-                  className="h-full bg-slate-500 rounded-full transition-all"
-                  style={{ width: `${prediction.drawProbability * 100}%` }}
-                />
-              </Progress>
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium text-red-700">Vendég győzelem</span>
-                <span className="text-sm font-bold text-red-800">
-                  {Math.round(prediction.awayWinProbability * 100)}%
-                </span>
-              </div>
-              <Progress value={prediction.awayWinProbability * 100} className="h-3 bg-slate-200">
-                <div
-                  className="h-full bg-red-500 rounded-full transition-all"
-                  style={{ width: `${prediction.awayWinProbability * 100}%` }}
-                />
-              </Progress>
-            </div>
+        <div className="grid grid-cols-2 gap-4 text-sm">
+          <div>
+            <p className="text-sm font-medium">Prediktált hazai gólok</p>
+            <p className="text-xl font-bold">{predictedHomeGoals}</p>
+          </div>
+          <div>
+            <p className="text-sm font-medium">Prediktált vendég gólok</p>
+            <p className="text-xl font-bold">{predictedAwayGoals}</p>
           </div>
         </div>
 
-        {/* Expected Goals */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-blue-50 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Target className="h-4 w-4 text-blue-600" />
-              <span className="text-sm font-medium text-blue-700">Várható gólok (H)</span>
-            </div>
-            <div className="text-2xl font-bold text-blue-800">{prediction.expectedGoals.home}</div>
-          </div>
+        <Separator />
 
-          <div className="bg-red-50 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Target className="h-4 w-4 text-red-600" />
-              <span className="text-sm font-medium text-red-700">Várható gólok (V)</span>
-            </div>
-            <div className="text-2xl font-bold text-red-800">{prediction.expectedGoals.away}</div>
-          </div>
-        </div>
-
-        {/* Gól predikciók */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-purple-50 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Activity className="h-4 w-4 text-purple-600" />
-              <span className="text-sm font-medium text-purple-700">Mindkét csapat gólja</span>
-            </div>
-            <div className="text-2xl font-bold text-purple-800">
-              {Math.round(prediction.bothTeamsToScoreProb * 100)}%
-            </div>
-          </div>
-
-          <div className="bg-orange-50 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Zap className="h-4 w-4 text-orange-600" />
-              <span className="text-sm font-medium text-orange-700">Over 2.5 gól</span>
-            </div>
-            <div className="text-2xl font-bold text-orange-800">{Math.round(prediction.over25Probability * 100)}%</div>
-          </div>
-        </div>
-
-        {/* Meta információk */}
-        <div className="pt-4 border-t border-slate-200">
-          <div className="flex items-center justify-between text-xs text-slate-500">
-            <div className="flex items-center gap-1">
-              <Clock className="h-3 w-3" />
-              <span>Frissítve: {new Date().toLocaleString("hu-HU")}</span>
-            </div>
-            <div>🚀 Valós adatok alapján</div>
-          </div>
+        <div className="text-xs text-gray-500">
+          <p>Modell verzió: {modelVersion}</p>
+          <p>Konfidencia pontszám: {(confidenceScore * 100).toFixed(2)}%</p>
         </div>
       </CardContent>
     </Card>
