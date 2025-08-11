@@ -21,6 +21,28 @@ const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
   },
 })
 
+function normalizeMatchTime(rawValue, fallbackDate = "2023-01-01") {
+  const raw = (rawValue || "").trim()
+  if (!raw) return null
+
+  const timeOnly = /^\d{1,2}:\d{2}$/.test(raw)
+  const hasDate = /\d{4}-\d{2}-\d{2}/.test(raw) || raw.includes("T")
+  const hasTime = /:\d{2}/.test(raw)
+
+  let candidate
+  if (timeOnly) {
+    candidate = `${fallbackDate} ${raw}:00`
+  } else if (hasDate && !hasTime) {
+    candidate = `${raw} 00:00:00`
+  } else {
+    candidate = raw
+  }
+
+  const d = new Date(candidate)
+  if (isNaN(d.getTime())) return null
+  return d.toISOString()
+}
+
 async function importCsvData(filePath) {
   try {
     const csvFilePath = path.resolve(process.cwd(), filePath)
@@ -36,26 +58,25 @@ async function importCsvData(filePath) {
 
     console.log(`Found ${records.length} records in CSV.`)
 
-    const matchesToInsert = records.map((record) => {
-      // Assuming a default date for match_time if only time is provided
-      // If your CSV has a date column, you should use that instead.
-      const defaultDate = "2023-01-01" // Example default date
-      const matchTime = `${defaultDate} ${record.match_time}:00` // Add seconds for full timestamp format
+    const matchesToInsert = records
+      .map((record) => {
+        const isoMatchTime = normalizeMatchTime(record.match_time, record.match_date || "2023-01-01")
 
-      return {
-        match_time: new Date(matchTime).toISOString(), // Convert to ISO string for TIMESTAMPTZ
-        league: record.league || "Unknown League", // Default if not present
-        home_team: record.home_team,
-        away_team: record.away_team,
-        full_time_home_goals: Number.parseInt(record.full_time_home_goals, 10),
-        full_time_away_goals: Number.parseInt(record.full_time_away_goals, 10),
-        half_time_home_goals: Number.parseInt(record.half_time_home_goals, 10) || 0,
-        half_time_away_goals: Number.parseInt(record.half_time_away_goals, 10) || 0,
-        // Add other fields as necessary, ensuring correct type conversion
-        // For example, if you have 'home_shots' as string, convert it:
-        // home_shots: parseInt(record.home_shots, 10) || 0,
-      }
-    })
+        return {
+          match_time: isoMatchTime, // Convert to ISO string for TIMESTAMPTZ
+          league: record.league || "Unknown League", // Default if not present
+          home_team: record.home_team,
+          away_team: record.away_team,
+          full_time_home_goals: Number.parseInt(record.full_time_home_goals, 10) || 0,
+          full_time_away_goals: Number.parseInt(record.full_time_away_goals, 10) || 0,
+          half_time_home_goals: Number.parseInt(record.half_time_home_goals, 10) || 0,
+          half_time_away_goals: Number.parseInt(record.half_time_away_goals, 10) || 0,
+          // Add other fields as necessary, ensuring correct type conversion
+          // For example, if you have 'home_shots' as string, convert it:
+          // home_shots: parseInt(record.home_shots, 10) || 0,
+        }
+      })
+      .filter((r) => r.match_time)
 
     console.log(`Inserting ${matchesToInsert.length} matches into 'matches' table...`)
 
@@ -89,21 +110,21 @@ async function runImportFromUrl(url) {
 
     console.log(`Found ${records.length} records from URL.`)
 
-    const matchesToInsert = records.map((record) => {
-      const defaultDate = "2023-01-01" // Use a static date for time-only entries
-      const matchTime = `${defaultDate} ${record.match_time}:00`
-
-      return {
-        match_time: new Date(matchTime).toISOString(),
-        league: record.league || "Unknown League",
-        home_team: record.home_team,
-        away_team: record.away_team,
-        full_time_home_goals: Number.parseInt(record.full_time_home_goals, 10),
-        full_time_away_goals: Number.parseInt(record.full_time_away_goals, 10),
-        half_time_home_goals: Number.parseInt(record.half_time_home_goals, 10) || 0,
-        half_time_away_goals: Number.parseInt(record.half_time_away_goals, 10) || 0,
-      }
-    })
+    const matchesToInsert = records
+      .map((record) => {
+        const isoMatchTime = normalizeMatchTime(record.match_time, record.match_date || "2023-01-01")
+        return {
+          match_time: isoMatchTime,
+          league: record.league || "Unknown League",
+          home_team: record.home_team,
+          away_team: record.away_team,
+          full_time_home_goals: Number.parseInt(record.full_time_home_goals, 10) || 0,
+          full_time_away_goals: Number.parseInt(record.full_time_away_goals, 10) || 0,
+          half_time_home_goals: Number.parseInt(record.half_time_home_goals, 10) || 0,
+          half_time_away_goals: Number.parseInt(record.half_time_away_goals, 10) || 0,
+        }
+      })
+      .filter((r) => r.match_time)
 
     console.log(`Inserting ${matchesToInsert.length} matches into 'matches' table...`)
 
