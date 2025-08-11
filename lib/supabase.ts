@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js"
 import type { Database } from "./database.types"
 
+export type Match = Database["public"]["Tables"]["matches"]["Row"]
+
 // Client-side Supabase client (for public data and auth)
 // This client uses NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY
 // which are exposed to the browser.

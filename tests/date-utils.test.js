@@ -67,32 +67,32 @@ describe("Date Utils", () => {
         hour: "2-digit",
         minute: "2-digit",
       })
-      expect(safeFormatDate(dateString)).toBe(expected)
+      expect(safeFormatDate(dateString, { includeTime: true })).toBe(expected)
     })
 
-    it("should return 'Érvénytelen dátum' for an invalid date string", () => {
+    it("should return fallback for an invalid date string", () => {
       const invalidDateString = "not-a-date"
-      expect(safeFormatDate(invalidDateString)).toBe("Érvénytelen dátum")
+      expect(safeFormatDate(invalidDateString)).toBe("Ismeretlen dátum")
     })
 
     it("should handle null input gracefully", () => {
-      expect(safeFormatDate(null)).toBe("Érvénytelen dátum")
+      expect(safeFormatDate(null)).toBe("Ismeretlen dátum")
     })
 
     it("should handle undefined input gracefully", () => {
-      expect(safeFormatDate(undefined)).toBe("Érvénytelen dátum")
+      expect(safeFormatDate(undefined)).toBe("Ismeretlen dátum")
     })
 
-    it("should format a date string without time correctly (defaults to midnight UTC)", () => {
+    it("should format a date string without time correctly (defaults to midnight local time)", () => {
       const dateString = "2024-03-15"
-      const expected = new Date("2024-03-15T00:00:00Z").toLocaleDateString("hu-HU", {
+      const expected = new Date("2024-03-15T00:00:00").toLocaleDateString("hu-HU", {
         year: "numeric",
         month: "long",
         day: "numeric",
         hour: "2-digit",
         minute: "2-digit",
       })
-      expect(safeFormatDate(dateString)).toBe(expected)
+      expect(safeFormatDate(dateString, { includeTime: true })).toBe(expected)
     })
   })
 

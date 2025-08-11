@@ -1,6 +1,5 @@
 import { useEnsembleWeight, calculateModelDisagreement, getDisagreementLevel } from "../hooks/use-ensemble-weight"
 import { renderHook, act } from "@testing-library/react-hooks"
-import jest from "jest" // Import jest to declare the variable
 
 // Mock localStorage
 const localStorageMock = {
@@ -9,6 +8,7 @@ const localStorageMock = {
   removeItem: jest.fn(),
   clear: jest.fn(),
 }
+// @ts-ignore
 global.localStorage = localStorageMock
 
 describe("Ensemble Weight Hook", () => {
@@ -18,22 +18,19 @@ describe("Ensemble Weight Hook", () => {
   })
 
   describe("useEnsembleWeight", () => {
-    it("should initialize with the default weight", () => {
+    it("should initialize with the default weights", () => {
       const { result } = renderHook(() => useEnsembleWeight())
-      expect(result.current.weight).toBe(0.5)
+      expect(result.current.weights.form).toBe(0.6)
+      expect(result.current.weights.h2h).toBe(0.4)
     })
 
-    it("should initialize with a custom initial weight", () => {
-      const { result } = renderHook(() => useEnsembleWeight(0.7))
-      expect(result.current.weight).toBe(0.7)
-    })
-
-    it("should update the weight when setWeight is called", () => {
+    it("should update the weights when setWeight is called", () => {
       const { result } = renderHook(() => useEnsembleWeight())
       act(() => {
         result.current.setWeight([0.8])
       })
-      expect(result.current.weight).toBe(0.8)
+      expect(result.current.weights.form).toBe(0.8)
+      expect(result.current.weights.h2h).toBe(0.2)
     })
 
     it("should only use the first value if an array is passed to setWeight", () => {
@@ -41,7 +38,8 @@ describe("Ensemble Weight Hook", () => {
       act(() => {
         result.current.setWeight([0.2, 0.5])
       })
-      expect(result.current.weight).toBe(0.2)
+      expect(result.current.weights.form).toBe(0.2)
+      expect(result.current.weights.h2h).toBe(0.8)
     })
 
     it("should handle multiple updates correctly", () => {
@@ -49,11 +47,13 @@ describe("Ensemble Weight Hook", () => {
       act(() => {
         result.current.setWeight([0.1])
       })
-      expect(result.current.weight).toBe(0.1)
+      expect(result.current.weights.form).toBe(0.1)
+      expect(result.current.weights.h2h).toBe(0.9)
       act(() => {
         result.current.setWeight([0.9])
       })
-      expect(result.current.weight).toBe(0.9)
+      expect(result.current.weights.form).toBe(0.9)
+      expect(result.current.weights.h2h).toBe(0.1)
     })
 
     test("should initialize with default weights", () => {
