@@ -104,10 +104,27 @@ export function useEnsembleWeight(initialWeights?: EnsembleWeights) {
     return balance * 0.1 // Max 10% confidence boost for perfect balance
   }, [weights])
 
+  const updateFormWeight = useCallback((value: number) => {
+    const clamped = Math.max(0, Math.min(1, value))
+    setWeights({ form: clamped, h2h: 1 - clamped })
+  }, [])
+
+  const updateH2HWeight = useCallback((value: number) => {
+    const clamped = Math.max(0, Math.min(1, value))
+    setWeights({ form: 1 - clamped, h2h: clamped })
+  }, [])
+
+  const resetWeights = useCallback(() => {
+    setWeights(DEFAULT_WEIGHTS)
+  }, [])
+
   return {
     weights,
     isLoading,
     setWeight: handleWeightChange,
+    updateFormWeight,
+    updateH2HWeight,
+    resetWeights,
     blendPredictions,
     getWeightDescription,
     getConfidenceAdjustment,

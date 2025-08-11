@@ -1,30 +1,50 @@
-# Fork of brutalis_winmix
+# Futballmeccsek Adatbázis
 
-*Automatically synced with your [v0.dev](https://v0.dev) deployments*
+Labdarúgó mérkőzések adatbázisa, elemzése és AI-alapú előrejelzések. A rendszer Next.js 14-re épül, Supabase (PostgreSQL) adatbázissal és modern komponensalapú felülettel.
 
-[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/takos-adams-projects/v0-fork-of-brutalis-winmix)
-[![Built with v0](https://img.shields.io/badge/Built%20with-v0.dev-black?style=for-the-badge)](https://v0.dev/chat/projects/yhjSy3nAdTQ)
+## Fő funkciók
+- Mérkőzések keresése és szűrése (csapat, dátum, liga)
+- AI-alapú mérkőzés-előrejelzések több modellből (forma, H2H, ensemble)
+- Legend mód: fejlett statisztikák és visszajöveteli valószínűségek
+- Valós idejű predikció-cache és teljesítménymutatók
+- Részletes csapatstatisztikák és H2H összehasonlítás
 
-## Overview
+## Technológiák
+- Frontend: Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, Radix UI
+- Backend: Next.js API Route Handlers
+- Adatbázis: Supabase (PostgreSQL) RLS-sel
+- Tesztelés: Jest + React Testing Library
 
-This repository will stay in sync with your deployed chats on [v0.dev](https://v0.dev).
-Any changes you make to your deployed app will be automatically pushed to this repository from [v0.dev](https://v0.dev).
+## Fejlesztői környezet
+1. Klónozás és függőségek:
+   - pnpm i vagy npm i
+2. Környezeti változók (példa):
+   - NEXT_PUBLIC_SUPABASE_URL
+   - NEXT_PUBLIC_SUPABASE_ANON_KEY
+   - SUPABASE_SERVICE_ROLE_KEY (csak szerveroldalon)
+3. Futtatás:
+   - npm run dev
+4. Tesztek futtatása:
+   - npm test
 
-## Deployment
+## Mappastruktúra
+- app/ – Next.js oldalak és API-k
+- components/ – újrafelhasználható UI komponensek
+- hooks/ – egyedi React hookok (pl. use-ensemble-weight)
+- lib/ – segédfüggvények, Supabase kliens és típusok
+- supabase/ – adatbázis migrációk
+- tests/ – egységtesztek
+- docs/ – rendszer-dokumentáció és QA ellenőrzőlisták
 
-Your project is live at:
+## Hasznos szkriptek
+- npm run db:migrate – migrációk futtatása
+- npm run db:cleanup – cache tisztítás (mintascript)
+- npm run test:coverage – tesztlefedettség
 
-**[https://vercel.com/takos-adams-projects/v0-fork-of-brutalis-winmix](https://vercel.com/takos-adams-projects/v0-fork-of-brutalis-winmix)**
+## Dokumentáció
+- docs/system-documentation-v21.md – Rendszer állapot és architektúra
+- docs/qa-checklist.md – Kiadás előtti QA ellenőrzőlista
+- docs/supabase-integration-guide.md – Supabase integráció
 
-## Build your app
-
-Continue building your app on:
-
-**[https://v0.dev/chat/projects/yhjSy3nAdTQ](https://v0.dev/chat/projects/yhjSy3nAdTQ)**
-
-## How It Works
-
-1. Create and modify your project using [v0.dev](https://v0.dev)
-2. Deploy your chats from the v0 interface
-3. Changes are automatically pushed to this repository
-4. Vercel deploys the latest version from this repository
+## Licenc
+Belső fejlesztői projekt. A felhasználás a csapat irányelvei szerint történik.

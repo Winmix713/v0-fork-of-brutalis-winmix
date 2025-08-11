@@ -1,8 +1,6 @@
 // jest.setup.js
 // This file is executed before all tests.
 
-const jest = require("jest")
-
 // Mock environment variables for tests if needed
 process.env.NEXT_PUBLIC_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || "http://localhost:54321"
 process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "mock-anon-key"
@@ -10,7 +8,7 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
 
 // Mock fetch API for tests
 global.fetch = jest.fn((url, options) => {
-  if (url.includes("/api/enhanced-prediction")) {
+  if (typeof url === "string" && url.includes("/api/enhanced-prediction")) {
     // Simulate successful prediction response
     return Promise.resolve({
       ok: true,
